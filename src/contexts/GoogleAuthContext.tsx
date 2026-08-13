@@ -135,46 +135,57 @@ export function GoogleAuthProvider({ children }: { children: React.ReactNode }) 
     }
   }, [accessToken, refreshBackupInfo]);
 
-  useEffect(() => {
-    const initGis = () => {
-      const google = (window as any).google;
-      if (google?.accounts?.oauth2) {
-        try {
-          const client = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: `${SCOPES} email profile`,
-            callback: (response: any) => {
-              if (response.access_token) {
-                setAccessToken(response.access_token);
-                const expiresInMs = (Number(response.expires_in) || 3599) * 1000;
-                sessionStorage.setItem('google_access_token', response.access_token);
-                sessionStorage.setItem('google_token_expiry', String(Date.now() + expiresInMs));
-                setError(null);
-                fetchUserInfo(response.access_token);
-                refreshBackupInfo(response.access_token);
-              } else if (response.error) {
-                setError(response.error_description || response.error);
-              }
-            },
-            error_callback: (err: any) => {
-              setError(err.message || 'Authentication with Google failed.');
-            },
-          });
-          setTokenClient(client);
-        } catch (e: any) {
-          console.warn('Google Identity Client error:', e);
-        }
-        setIsLoading(false);
-      }
-    };
+  const initClient = useCallback(() => {
+    const google = (window as any).google;
+    if (!google?.accounts?.oauth2) {
+      setError('Google Identity Services script is still loading. Please check your internet connection.');
+      return null;
+    }
 
+    if (!CLIENT_ID) {
+      setError('Google Client ID is not configured. Please ensure OAuth credentials are setup.');
+      return null;
+    }
+
+    try {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: `${SCOPES} email profile`,
+        callback: (response: any) => {
+          if (response.access_token) {
+            setAccessToken(response.access_token);
+            const expiresInMs = (Number(response.expires_in) || 3599) * 1000;
+            sessionStorage.setItem('google_access_token', response.access_token);
+            sessionStorage.setItem('google_token_expiry', String(Date.now() + expiresInMs));
+            setError(null);
+            fetchUserInfo(response.access_token);
+            refreshBackupInfo(response.access_token);
+          } else if (response.error) {
+            setError(response.error_description || response.error);
+          }
+        },
+        error_callback: (err: any) => {
+          setError(err.message || 'Authentication with Google failed.');
+        },
+      });
+      setTokenClient(client);
+      setIsLoading(false);
+      return client;
+    } catch (e: any) {
+      console.warn('Google Identity Client error:', e);
+      setError(e.message || 'Could not initialize Google Identity Client');
+      return null;
+    }
+  }, [fetchUserInfo, refreshBackupInfo]);
+
+  useEffect(() => {
     if ((window as any).google?.accounts?.oauth2) {
-      initGis();
+      initClient();
     } else {
       const interval = setInterval(() => {
         if ((window as any).google?.accounts?.oauth2) {
           clearInterval(interval);
-          initGis();
+          initClient();
         }
       }, 100);
       const timeout = setTimeout(() => {
@@ -186,7 +197,7 @@ export function GoogleAuthProvider({ children }: { children: React.ReactNode }) 
         clearTimeout(timeout);
       };
     }
-  }, [fetchUserInfo, refreshBackupInfo]);
+  }, [initClient]);
 
   useEffect(() => {
     if (accessToken) {
@@ -195,13 +206,15 @@ export function GoogleAuthProvider({ children }: { children: React.ReactNode }) 
   }, [accessToken, refreshBackupInfo]);
 
   const signIn = useCallback(() => {
-    if (tokenClient) {
-      setError(null);
-      tokenClient.requestAccessToken();
-    } else {
-      setError('Google Sign-In is initializing or Client ID is pending.');
+    setError(null);
+    let client = tokenClient;
+    if (!client) {
+      client = initClient();
     }
-  }, [tokenClient]);
+    if (client) {
+      client.requestAccessToken({ prompt: 'consent' });
+    }
+  }, [tokenClient, initClient]);
 
   const signOut = useCallback(() => {
     const google = (window as any).google;

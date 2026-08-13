@@ -40,7 +40,8 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
     signIn,
     signOut,
     backupNow,
-    restoreNow
+    restoreNow,
+    error
   } = useGoogleAuth();
 
   const [isExporting, setIsExporting] = useState(false);
@@ -248,6 +249,13 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
                 <p className="text-xs text-zinc-400 leading-relaxed font-medium">
                   Connect your Google account to automatically store silent backups in your private Google Drive app storage, making it seamless to restore your workout history across any phone or computer.
                 </p>
+
+                {error && (
+                  <div className="p-3 bg-amber-950/50 border border-amber-800/60 rounded-xl text-xs text-amber-300 font-medium">
+                    {error}
+                  </div>
+                )}
+
                 <button
                   onClick={signIn}
                   className="w-full py-3 px-4 bg-white hover:bg-zinc-100 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2.5 shadow-md active:scale-98 transition-all"
