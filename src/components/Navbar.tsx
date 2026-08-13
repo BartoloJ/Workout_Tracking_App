@@ -9,8 +9,10 @@ import {
   Smartphone,
   Wifi,
   WifiOff,
-  Sparkles
+  Sparkles,
+  Cloud
 } from 'lucide-react';
+import { useGoogleAuth } from '../contexts/GoogleAuthContext';
 
 interface NavbarProps {
   onOpenNewWorkout: () => void;
@@ -32,6 +34,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   totalWorkouts
 }) => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const { isAuthenticated } = useGoogleAuth();
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -123,14 +126,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Trophy className="w-4 h-4" />
           </button>
 
-          {/* Backup / Export / Import */}
+          {/* Backup / Export / Import / Google Drive */}
           <button
             id="data-backup-btn"
             onClick={onOpenDataModal}
-            className="p-2 text-zinc-400 hover:text-zinc-200 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800 rounded-xl transition-colors touch-press"
-            title="Data Backup, JSON Export & Import"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-colors touch-press text-xs font-semibold ${
+              isAuthenticated
+                ? 'bg-sky-950/40 border-sky-500/40 text-sky-400 hover:bg-sky-900/40'
+                : 'bg-zinc-900/60 hover:bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+            }`}
+            title="Google Drive Cloud Sync & Data Backup"
           >
-            <Database className="w-4 h-4" />
+            {isAuthenticated ? <Cloud className="w-4 h-4 text-sky-400" /> : <Database className="w-4 h-4" />}
+            <span className="hidden md:inline">{isAuthenticated ? 'Drive Synced' : 'Backup'}</span>
+            {isAuthenticated && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
           </button>
 
           {/* iOS / PWA Guide */}

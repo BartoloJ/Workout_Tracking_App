@@ -2,12 +2,15 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { GoogleAuthProvider } from './contexts/GoogleAuthContext';
 import { registerServiceWorker } from './registerSW';
 
 registerServiceWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <GoogleAuthProvider>
+      <App />
+    </GoogleAuthProvider>
   </StrictMode>,
 );

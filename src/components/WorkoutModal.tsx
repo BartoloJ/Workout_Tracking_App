@@ -26,6 +26,7 @@ import {
   CARDIO_ACTIVITIES
 } from '../types';
 import { saveWorkoutWithDetails } from '../db';
+import { useGoogleAuth } from '../contexts/GoogleAuthContext';
 import confetti from 'canvas-confetti';
 
 interface WorkoutModalProps {
@@ -44,6 +45,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   editWorkoutData
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
+  const { isAuthenticated, autoSyncEnabled, backupNow } = useGoogleAuth();
 
   // Core workout state
   const [date, setDate] = useState<string>(initialDate || todayStr);
@@ -284,6 +286,11 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
         : null;
 
       await saveWorkoutWithDetails(workoutPayload, exercisesPayload, cardioPayload);
+
+      // Background cloud backup to Google Drive if connected and auto-sync is on
+      if (isAuthenticated && autoSyncEnabled) {
+        backupNow().catch((e) => console.warn('Auto cloud sync failed:', e));
+      }
 
       // Trigger celebrate confetti on save
       confetti({
