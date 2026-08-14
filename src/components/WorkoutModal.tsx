@@ -13,7 +13,14 @@ import {
   Heart,
   Timer,
   Info,
-  RefreshCw
+  RefreshCw,
+  Play,
+  Pause,
+  RotateCcw,
+  Minus,
+  Volume2,
+  VolumeX,
+  Maximize2
 } from 'lucide-react';
 import {
   Workout,
@@ -28,6 +35,7 @@ import {
 } from '../types';
 import { saveWorkoutWithDetails } from '../db';
 import { useGoogleAuth } from '../contexts/GoogleAuthContext';
+import { useRestTimer } from '../contexts/RestTimerContext';
 import confetti from 'canvas-confetti';
 
 interface WorkoutModalProps {
@@ -47,6 +55,24 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
   const { isAuthenticated, autoSyncEnabled, backupNow } = useGoogleAuth();
+  const {
+    totalSeconds: timerTotalSecs,
+    remainingSeconds: timerRemaining,
+    isActive: timerIsActive,
+    soundEnabled: timerSound,
+    formattedTime: timerFormattedTime,
+    progressPercent: timerProgressPercent,
+    toggleTimer,
+    resetTimer,
+    adjustTime: adjustTimer,
+    setSoundEnabled: setTimerSound,
+    selectPreset: selectTimerPreset,
+    startTimer,
+    autoStartOnComplete,
+    setAutoStartOnComplete,
+    openTimer: openTimerModal,
+    presets: timerPresets
+  } = useRestTimer();
 
   // Core workout state
   const [date, setDate] = useState<string>(initialDate || todayStr);
@@ -216,6 +242,11 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
     field: keyof ExerciseSet,
     value: any
   ) => {
+    // If completing a set and autoStartOnComplete is active, automatically start the rest timer!
+    if (field === 'completed' && value === true && autoStartOnComplete) {
+      startTimer();
+    }
+
     setExercises(prev => {
       const updated = [...prev];
       const ex = { ...updated[exerciseIndex] };
@@ -419,13 +450,31 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
             </div>
           </div>
 
-          <button
-            id="close-workout-modal-btn"
-            onClick={onClose}
-            className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleTimer}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors touch-press ${
+                timerIsActive
+                  ? 'bg-emerald-950/90 border-emerald-500 text-emerald-400 shadow-sm shadow-emerald-950'
+                  : timerRemaining === 0
+                  ? 'bg-amber-950/90 border-amber-500 text-amber-300'
+                  : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800'
+              }`}
+              title="Gym Rest Timer"
+            >
+              <Timer className={`w-3.5 h-3.5 ${timerIsActive ? 'animate-pulse text-emerald-400' : ''}`} />
+              <span className="font-mono-numbers">{timerFormattedTime}</span>
+            </button>
+
+            <button
+              id="close-workout-modal-btn"
+              onClick={onClose}
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body / Form */}
@@ -554,6 +603,161 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
           {/* Section 1: STRENGTH LOGGING */}
           {(workoutType === 'strength' || workoutType === 'hybrid') && (
             <div className="space-y-4 pt-2">
+              {/* Interactive In-Workout Rest Timer Bar */}
+              <div
+                id="in-workout-rest-timer-bar"
+                className={`p-3.5 sm:p-4 rounded-2xl border transition-all ${
+                  timerIsActive
+                    ? 'bg-zinc-950/90 border-emerald-500/60 shadow-lg shadow-black/40'
+                    : timerRemaining === 0
+                    ? 'bg-amber-950/30 border-amber-500/60 shadow-lg shadow-black/40'
+                    : 'bg-zinc-950/60 border-zinc-800'
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={toggleTimer}
+                      className={`p-2.5 rounded-xl border transition-all ${
+                        timerIsActive
+                          ? 'bg-emerald-950 text-emerald-400 border-emerald-700 animate-pulse'
+                          : timerRemaining === 0
+                          ? 'bg-amber-950 text-amber-400 border-amber-700'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                      }`}
+                      title={timerIsActive ? 'Pause Rest' : 'Start Rest'}
+                    >
+                      <Timer className="w-5 h-5" />
+                    </button>
+                    <div>
+                      <div className="flex items-baseline gap-2">
+                        <span className={`font-mono-numbers font-black text-2xl tracking-tight leading-none ${
+                          timerRemaining === 0 ? 'text-amber-400 animate-bounce' : timerIsActive ? 'text-emerald-400' : 'text-zinc-100'
+                        }`}>
+                          {timerFormattedTime}
+                        </span>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                          {timerRemaining === 0 ? 'Rest Complete!' : timerIsActive ? 'Resting...' : 'Rest Timer'}
+                        </span>
+                      </div>
+                      {/* Mini progress bar */}
+                      <div className="w-32 sm:w-44 h-1.5 bg-zinc-900 rounded-full overflow-hidden mt-1.5 border border-zinc-800">
+                        <div
+                          className={`h-full transition-all duration-300 ${timerRemaining === 0 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                          style={{ width: `${timerProgressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Primary Controls */}
+                  <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-center">
+                    {/* Steppers */}
+                    <button
+                      type="button"
+                      onClick={() => adjustTimer(-15)}
+                      className="px-2 py-1 text-xs font-mono font-bold bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg transition-colors"
+                      title="-15 seconds"
+                    >
+                      -15s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => adjustTimer(15)}
+                      className="px-2 py-1 text-xs font-mono font-bold bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg transition-colors"
+                      title="+15 seconds"
+                    >
+                      +15s
+                    </button>
+
+                    {/* Play/Pause */}
+                    <button
+                      type="button"
+                      onClick={toggleTimer}
+                      className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all touch-press ${
+                        timerIsActive
+                          ? 'bg-amber-400 hover:bg-amber-300 text-zinc-950 shadow-sm shadow-amber-950'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-sm shadow-emerald-950'
+                      }`}
+                    >
+                      {timerIsActive ? (
+                        <>
+                          <Pause className="w-3.5 h-3.5 fill-current" />
+                          <span>Pause</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>{timerRemaining === 0 ? 'Restart' : 'Start Rest'}</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Reset */}
+                    <button
+                      type="button"
+                      onClick={resetTimer}
+                      className="p-1.5 text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded-xl transition-colors"
+                      title="Reset timer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Sound */}
+                    <button
+                      type="button"
+                      onClick={() => setTimerSound(prev => !prev)}
+                      className="p-1.5 text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded-xl transition-colors"
+                      title={timerSound ? 'Mute sound chime' : 'Unmute sound chime'}
+                    >
+                      {timerSound ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-zinc-500" />}
+                    </button>
+
+                    {/* Expand full modal */}
+                    <button
+                      type="button"
+                      onClick={() => openTimerModal()}
+                      className="p-1.5 text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded-xl transition-colors"
+                      title="Expand full screen timer"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Preset Chips & Auto-start checkbox */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 mt-1 border-t border-zinc-800 text-xs">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mr-1">Presets:</span>
+                    {timerPresets.map(p => (
+                      <button
+                        key={p.secs}
+                        type="button"
+                        onClick={() => selectTimerPreset(p.secs)}
+                        className={`px-2.5 py-0.5 rounded-lg text-[11px] font-mono-numbers font-bold transition-colors ${
+                          timerTotalSecs === p.secs
+                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                            : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <label className="flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={autoStartOnComplete}
+                      onChange={e => setAutoStartOnComplete(e.target.checked)}
+                      className="rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0 w-3.5 h-3.5"
+                    />
+                    <span>Auto-start rest on checked set</span>
+                  </label>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                 <div className="flex items-center gap-2">
                   <Dumbbell className="w-4 h-4 text-emerald-400" />

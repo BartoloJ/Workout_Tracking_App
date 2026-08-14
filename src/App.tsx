@@ -15,10 +15,13 @@ import { WorkoutFeed } from './components/WorkoutFeed';
 import { DataManagementModal } from './components/DataManagementModal';
 import { PRTrackerModal } from './components/PRTrackerModal';
 import { RestTimerModal } from './components/RestTimerModal';
+import { FloatingRestTimer } from './components/FloatingRestTimer';
 import { PWAInstallModal } from './components/PWAInstallModal';
+import { useRestTimer } from './contexts/RestTimerContext';
 import { Plus, Dumbbell, Sparkles, Flame, Trophy, Timer, ArrowUp } from 'lucide-react';
 
 export default function App() {
+  const { isTimerModalOpen, openTimer, closeTimer } = useRestTimer();
   // Calendar month state
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   
@@ -51,7 +54,6 @@ export default function App() {
 
   const [isDataModalOpen, setIsDataModalOpen] = useState<boolean>(false);
   const [isPRModalOpen, setIsPRModalOpen] = useState<boolean>(false);
-  const [isTimerModalOpen, setIsTimerModalOpen] = useState<boolean>(false);
   const [isPWAModalOpen, setIsPWAModalOpen] = useState<boolean>(false);
 
   // Fetch all workouts and streak stats from IndexedDB
@@ -132,7 +134,7 @@ export default function App() {
       {/* Top App Navbar */}
       <Navbar
         onOpenNewWorkout={() => handleOpenLogModal()}
-        onOpenTimer={() => setIsTimerModalOpen(true)}
+        onOpenTimer={() => openTimer()}
         onOpenPRs={() => setIsPRModalOpen(true)}
         onOpenDataModal={() => setIsDataModalOpen(true)}
         onOpenPWAModal={() => setIsPWAModalOpen(true)}
@@ -179,7 +181,7 @@ export default function App() {
 
           <div className="flex items-center gap-6 text-zinc-400 font-medium">
             <button
-              onClick={() => setIsTimerModalOpen(true)}
+              onClick={() => openTimer()}
               className="hover:text-emerald-400 transition-colors"
             >
               Rest Timer
@@ -205,6 +207,9 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Floating Mini Rest Timer (Stays active on top of workout logging) */}
+      <FloatingRestTimer />
 
       {/* Floating Action Button for Mobile Logging */}
       <div className="fixed bottom-6 right-6 sm:hidden z-20">
@@ -261,7 +266,7 @@ export default function App() {
       {/* 5. Gym Rest Timer Modal */}
       <RestTimerModal
         isOpen={isTimerModalOpen}
-        onClose={() => setIsTimerModalOpen(false)}
+        onClose={closeTimer}
       />
 
       {/* 6. iOS PWA Installation Guide Modal */}

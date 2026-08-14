@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import {
   X,
   Timer,
@@ -8,8 +8,10 @@ import {
   Plus,
   Minus,
   Volume2,
-  VolumeX
+  VolumeX,
+  Sparkles
 } from 'lucide-react';
+import { useRestTimer } from '../contexts/RestTimerContext';
 
 interface RestTimerModalProps {
   isOpen: boolean;
@@ -17,102 +19,27 @@ interface RestTimerModalProps {
 }
 
 export const RestTimerModal: React.FC<RestTimerModalProps> = ({ isOpen, onClose }) => {
-  const [totalSeconds, setTotalSeconds] = useState(90);
-  const [remainingSeconds, setRemainingSeconds] = useState(90);
-  const [isActive, setIsActive] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const intervalRef = useRef<any>(null);
-
-  const presets = [
-    { label: '30s', secs: 30 },
-    { label: '60s', secs: 60 },
-    { label: '90s', secs: 90 },
-    { label: '2m', secs: 120 },
-    { label: '3m', secs: 180 },
-    { label: '5m', secs: 300 },
-  ];
-
-  useEffect(() => {
-    if (isActive && remainingSeconds > 0) {
-      intervalRef.current = setInterval(() => {
-        setRemainingSeconds(prev => {
-          if (prev <= 1) {
-            clearInterval(intervalRef.current);
-            setIsActive(false);
-            playChime();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      clearInterval(intervalRef.current);
-    }
-
-    return () => clearInterval(intervalRef.current);
-  }, [isActive, remainingSeconds]);
-
-  const playChime = () => {
-    if (!soundEnabled) return;
-    try {
-      // Synthesize a clean gym rest chime using Web Audio API
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
-      osc.frequency.exponentialRampToValueAtTime(1174.66, ctx.currentTime + 0.3); // D6
-
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start();
-      osc.stop(ctx.currentTime + 0.8);
-    } catch (e) {
-      console.warn('Audio chime unsupported or blocked:', e);
-    }
-  };
-
-  const handleSelectPreset = (secs: number) => {
-    setTotalSeconds(secs);
-    setRemainingSeconds(secs);
-    setIsActive(true);
-  };
-
-  const toggleTimer = () => {
-    if (remainingSeconds === 0) {
-      setRemainingSeconds(totalSeconds);
-    }
-    setIsActive(!isActive);
-  };
-
-  const resetTimer = () => {
-    setIsActive(false);
-    setRemainingSeconds(totalSeconds);
-  };
-
-  const adjustTime = (delta: number) => {
-    setRemainingSeconds(prev => Math.max(0, prev + delta));
-    setTotalSeconds(prev => Math.max(0, prev + delta));
-  };
+  const {
+    totalSeconds,
+    remainingSeconds,
+    isActive,
+    soundEnabled,
+    presets,
+    formattedTime,
+    progressPercent,
+    toggleTimer,
+    resetTimer,
+    adjustTime,
+    setSoundEnabled,
+    selectPreset,
+    autoStartOnComplete,
+    setAutoStartOnComplete
+  } = useRestTimer();
 
   if (!isOpen) return null;
 
-  const mins = Math.floor(remainingSeconds / 60);
-  const secs = remainingSeconds % 60;
-  const formattedTime = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-
-  const progressPercent = totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
       <div
         id="rest-timer-modal"
         className="relative w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl shadow-black my-8 flex flex-col overflow-hidden text-center"
@@ -128,7 +55,7 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({ isOpen, onClose 
 
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
+              onClick={() => setSoundEnabled(prev => !prev)}
               className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 transition-colors"
               title={soundEnabled ? 'Mute sound' : 'Unmute sound'}
             >
@@ -161,7 +88,13 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({ isOpen, onClose 
                 cx="50"
                 cy="50"
                 r="44"
-                className="stroke-emerald-500 transition-all duration-300 ease-linear"
+                className={`transition-all duration-300 ease-linear ${
+                  remainingSeconds === 0
+                    ? 'stroke-amber-400'
+                    : isActive
+                    ? 'stroke-emerald-400'
+                    : 'stroke-zinc-600'
+                }`}
                 strokeWidth="6"
                 strokeDasharray="276.46"
                 strokeDashoffset={276.46 - (276.46 * progressPercent) / 100}
@@ -232,15 +165,26 @@ export const RestTimerModal: React.FC<RestTimerModalProps> = ({ isOpen, onClose 
           </div>
 
           {/* Preset Buttons Grid */}
-          <div className="w-full pt-3 border-t border-zinc-800">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 block mb-2 text-left">
-              Quick Rest Presets
-            </span>
+          <div className="w-full pt-3 border-t border-zinc-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                Quick Rest Presets
+              </span>
+              <label className="flex items-center gap-1.5 text-[11px] text-zinc-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoStartOnComplete}
+                  onChange={e => setAutoStartOnComplete(e.target.checked)}
+                  className="rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0 w-3.5 h-3.5"
+                />
+                <span>Auto-start on check</span>
+              </label>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {presets.map(p => (
                 <button
                   key={p.secs}
-                  onClick={() => handleSelectPreset(p.secs)}
+                  onClick={() => selectPreset(p.secs)}
                   className={`py-2 px-2 rounded-xl text-xs font-bold font-mono-numbers transition-colors ${
                     totalSeconds === p.secs
                       ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'

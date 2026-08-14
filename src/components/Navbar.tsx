@@ -13,6 +13,7 @@ import {
   Cloud
 } from 'lucide-react';
 import { useGoogleAuth } from '../contexts/GoogleAuthContext';
+import { useRestTimer } from '../contexts/RestTimerContext';
 
 interface NavbarProps {
   onOpenNewWorkout: () => void;
@@ -35,6 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const { isAuthenticated } = useGoogleAuth();
+  const { isActive: isTimerActive, remainingSeconds, formattedTime } = useRestTimer();
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -106,14 +108,30 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Rest Timer Button */}
+          {/* Rest Timer Button with active countdown badge */}
           <button
             id="rest-timer-btn"
             onClick={onOpenTimer}
-            className="p-2 text-zinc-400 hover:text-emerald-400 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800 rounded-xl transition-colors touch-press"
+            className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-colors touch-press text-xs font-semibold ${
+              isTimerActive
+                ? 'bg-emerald-950/80 border-emerald-500/80 text-emerald-400 shadow-sm shadow-emerald-950'
+                : remainingSeconds === 0
+                ? 'bg-amber-950/80 border-amber-500/80 text-amber-300'
+                : 'p-2 text-zinc-400 hover:text-emerald-400 bg-zinc-900/60 hover:bg-zinc-900 border-zinc-800'
+            }`}
             title="Gym Rest Timer"
           >
-            <Timer className="w-4 h-4" />
+            <Timer className={`w-4 h-4 ${isTimerActive ? 'animate-pulse text-emerald-400' : ''}`} />
+            {isTimerActive && (
+              <span className="font-mono-numbers font-bold text-xs">
+                {formattedTime}
+              </span>
+            )}
+            {remainingSeconds === 0 && !isTimerActive && (
+              <span className="font-bold text-[10px] uppercase text-amber-400">
+                Done!
+              </span>
+            )}
           </button>
 
           {/* PRs / Exercise History */}
