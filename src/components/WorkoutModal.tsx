@@ -12,7 +12,8 @@ import {
   Sparkles,
   Heart,
   Timer,
-  Info
+  Info,
+  RefreshCw
 } from 'lucide-react';
 import {
   Workout,
@@ -217,10 +218,49 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   ) => {
     setExercises(prev => {
       const updated = [...prev];
-      updated[exerciseIndex].sets[setIndex] = {
-        ...updated[exerciseIndex].sets[setIndex],
+      const ex = { ...updated[exerciseIndex] };
+      const currentSets = ex.sets.map(s => ({ ...s }));
+      const prevSet0Weight = currentSets[0]?.weight_lbs;
+
+      currentSets[setIndex] = {
+        ...currentSets[setIndex],
         [field]: value
       };
+
+      // When modifying the first set (Set #1) weight:
+      // If other sets were still matching Set 1's previous weight (or are empty/default),
+      // cascade the new weight across all of them so user doesn't have to retype it for each set.
+      if (setIndex === 0 && field === 'weight_lbs') {
+        const newWeight = value;
+        for (let i = 1; i < currentSets.length; i++) {
+          if (
+            currentSets[i].weight_lbs === prevSet0Weight ||
+            currentSets[i].weight_lbs === 0 ||
+            currentSets[i].weight_lbs === undefined ||
+            Number.isNaN(currentSets[i].weight_lbs)
+          ) {
+            currentSets[i] = {
+              ...currentSets[i],
+              weight_lbs: newWeight
+            };
+          }
+        }
+      }
+
+      ex.sets = currentSets;
+      updated[exerciseIndex] = ex;
+      return updated;
+    });
+  };
+
+  // Sync all sets in an exercise to match the first set's weight
+  const handleSyncAllSetsWeight = (exerciseIndex: number) => {
+    setExercises(prev => {
+      const updated = [...prev];
+      const ex = { ...updated[exerciseIndex] };
+      const baseWeight = ex.sets[0]?.weight_lbs || 0;
+      ex.sets = ex.sets.map(s => ({ ...s, weight_lbs: baseWeight }));
+      updated[exerciseIndex] = ex;
       return updated;
     });
   };
@@ -229,9 +269,35 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   const adjustSetValue = (exerciseIndex: number, setIndex: number, field: 'reps' | 'weight_lbs', delta: number) => {
     setExercises(prev => {
       const updated = [...prev];
-      const current = Number(updated[exerciseIndex].sets[setIndex][field]) || 0;
+      const ex = { ...updated[exerciseIndex] };
+      const currentSets = ex.sets.map(s => ({ ...s }));
+      const current = Number(currentSets[setIndex][field]) || 0;
       const nextVal = Math.max(0, current + delta);
-      updated[exerciseIndex].sets[setIndex][field] = nextVal;
+      const prevSet0Weight = currentSets[0]?.weight_lbs;
+
+      currentSets[setIndex] = {
+        ...currentSets[setIndex],
+        [field]: nextVal
+      };
+
+      // Cascade Set 1 weight adjustment to other sets sharing the previous weight
+      if (setIndex === 0 && field === 'weight_lbs') {
+        for (let i = 1; i < currentSets.length; i++) {
+          if (
+            currentSets[i].weight_lbs === prevSet0Weight ||
+            currentSets[i].weight_lbs === 0 ||
+            currentSets[i].weight_lbs === undefined
+          ) {
+            currentSets[i] = {
+              ...currentSets[i],
+              weight_lbs: nextVal
+            };
+          }
+        }
+      }
+
+      ex.sets = currentSets;
+      updated[exerciseIndex] = ex;
       return updated;
     });
   };
@@ -639,7 +705,19 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                           </h4>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2.5">
+                          {ex.sets.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleSyncAllSetsWeight(exIdx)}
+                              className="text-[11px] font-semibold text-zinc-400 hover:text-emerald-400 bg-zinc-900/80 hover:bg-zinc-800 px-2 py-1 rounded-md border border-zinc-800 flex items-center gap-1 transition-colors"
+                              title="Sync all sets to match Set #1's weight"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              <span className="hidden sm:inline">Sync All to #{ex.sets[0]?.weight_lbs || 0} lbs</span>
+                              <span className="sm:hidden">Sync</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleAddSet(exIdx)}
