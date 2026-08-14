@@ -10,13 +10,19 @@ interface GoogleAuthContextType {
   lastBackup: DriveBackupInfo | null;
   isSyncing: boolean;
   autoSyncEnabled: boolean;
+  clientId: string;
+  setCustomClientId: (id: string) => void;
   toggleAutoSync: () => void;
   signIn: () => void;
   signOut: () => void;
   backupNow: () => Promise<void>;
   restoreNow: (replaceAll?: boolean) => Promise<number>;
   refreshBackupInfo: () => Promise<void>;
+  clearError: () => void;
 }
+
+const DEFAULT_CLIENT_ID = '205643621738-fd6k2ki0hmjtdf58ai5goan3cvcshlbq.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 
 const GoogleAuthContext = createContext<GoogleAuthContextType>({
   accessToken: null,
@@ -27,18 +33,24 @@ const GoogleAuthContext = createContext<GoogleAuthContextType>({
   lastBackup: null,
   isSyncing: false,
   autoSyncEnabled: true,
+  clientId: DEFAULT_CLIENT_ID,
+  setCustomClientId: () => {},
   toggleAutoSync: () => {},
   signIn: () => {},
   signOut: () => {},
   backupNow: async () => {},
   restoreNow: async () => 0,
   refreshBackupInfo: async () => {},
+  clearError: () => {},
 });
 
-const CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || '';
-const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
-
 export function GoogleAuthProvider({ children }: { children: React.ReactNode }) {
+  const [customClientId, setCustomClientIdState] = useState<string>(() => {
+    return localStorage.getItem('google_custom_client_id') || '';
+  });
+
+  const effectiveClientId = customClientId.trim() || (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || DEFAULT_CLIENT_ID;
+
   const [accessToken, setAccessToken] = useState<string | null>(() => {
     const savedToken = sessionStorage.getItem('google_access_token');
     const tokenExpiry = sessionStorage.getItem('google_token_expiry');
@@ -61,12 +73,27 @@ export function GoogleAuthProvider({ children }: { children: React.ReactNode }) 
     return localStorage.getItem('google_drive_auto_sync') !== 'false';
   });
 
+  const setCustomClientId = useCallback((newId: string) => {
+    const trimmed = newId.trim();
+    setCustomClientIdState(trimmed);
+    if (trimmed) {
+      localStorage.setItem('google_custom_client_id', trimmed);
+    } else {
+      localStorage.removeItem('google_custom_client_id');
+    }
+    setTokenClient(null);
+  }, []);
+
   const toggleAutoSync = useCallback(() => {
     setAutoSyncEnabled(prev => {
       const next = !prev;
       localStorage.setItem('google_drive_auto_sync', String(next));
       return next;
     });
+  }, []);
+
+  const clearError = useCallback(() => {
+    setError(null);
   }, []);
 
   const fetchUserInfo = useCallback(async (token: string) => {
@@ -142,14 +169,14 @@ export function GoogleAuthProvider({ children }: { children: React.ReactNode }) 
       return null;
     }
 
-    if (!CLIENT_ID) {
-      setError('Google Client ID is not configured. Please ensure OAuth credentials are setup.');
+    if (!effectiveClientId) {
+      setError('Google Client ID is missing. Please configure your Google OAuth Client ID.');
       return null;
     }
 
     try {
       const client = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
+        client_id: effectiveClientId,
         scope: `${SCOPES} email profile`,
         callback: (response: any) => {
           if (response.access_token) {
@@ -165,7 +192,7 @@ export function GoogleAuthProvider({ children }: { children: React.ReactNode }) 
           }
         },
         error_callback: (err: any) => {
-          setError(err.message || 'Authentication with Google failed.');
+          setError(err.message || 'Authentication with Google failed. If in an iframe, try opening in a new tab.');
         },
       });
       setTokenClient(client);
@@ -176,7 +203,7 @@ export function GoogleAuthProvider({ children }: { children: React.ReactNode }) 
       setError(e.message || 'Could not initialize Google Identity Client');
       return null;
     }
-  }, [fetchUserInfo, refreshBackupInfo]);
+  }, [effectiveClientId, fetchUserInfo, refreshBackupInfo]);
 
   useEffect(() => {
     if ((window as any).google?.accounts?.oauth2) {
@@ -212,7 +239,14 @@ export function GoogleAuthProvider({ children }: { children: React.ReactNode }) 
       client = initClient();
     }
     if (client) {
-      client.requestAccessToken({ prompt: 'consent' });
+      try {
+        client.requestAccessToken({ prompt: '' });
+      } catch (err: any) {
+        console.error('Error invoking Google sign in:', err);
+        setError(err.message || 'Failed to open Google Sign-In popup');
+      }
+    } else {
+      setError('Google Sign-In is initializing. Please tap again in a moment or verify Client ID.');
     }
   }, [tokenClient, initClient]);
 
@@ -245,12 +279,15 @@ export function GoogleAuthProvider({ children }: { children: React.ReactNode }) 
         lastBackup,
         isSyncing,
         autoSyncEnabled,
+        clientId: effectiveClientId,
+        setCustomClientId,
         toggleAutoSync,
         signIn,
         signOut,
         backupNow,
         restoreNow,
         refreshBackupInfo,
+        clearError,
       }}
     >
       {children}

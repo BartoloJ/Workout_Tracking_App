@@ -13,7 +13,9 @@ import {
   Cloud,
   CloudUpload,
   CloudDownload,
-  LogOut
+  LogOut,
+  ExternalLink,
+  Settings
 } from 'lucide-react';
 import { exportDatabaseJSON, importDatabaseJSON, seedSampleWorkouts, db } from '../db';
 import { useGoogleAuth } from '../contexts/GoogleAuthContext';
@@ -36,12 +38,15 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
     lastBackup,
     isSyncing,
     autoSyncEnabled,
+    clientId,
+    setCustomClientId,
     toggleAutoSync,
     signIn,
     signOut,
     backupNow,
     restoreNow,
-    error
+    error,
+    clearError
   } = useGoogleAuth();
 
   const [isExporting, setIsExporting] = useState(false);
@@ -49,6 +54,9 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
   const [isSeeding, setIsSeeding] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [showOAuthSettings, setShowOAuthSettings] = useState(false);
+  const [tempClientId, setTempClientId] = useState(clientId);
+  const [clientSavedMsg, setClientSavedMsg] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -56,6 +64,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
   const handleCloudBackup = async () => {
     setImportStatus(null);
     setImportError(null);
+    clearError();
     try {
       await backupNow();
       setImportStatus('Successfully saved backup to your Google Drive App Data folder!');
@@ -68,6 +77,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
     if (window.confirm('Restore workouts from your Google Drive backup? This will merge them with your current data.')) {
       setImportStatus(null);
       setImportError(null);
+      clearError();
       try {
         const count = await restoreNow(false);
         setImportStatus(`Successfully restored ${count} workouts from Google Drive!`);
@@ -170,6 +180,12 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
     }
   };
 
+  const handleSaveClientId = () => {
+    setCustomClientId(tempClientId);
+    setClientSavedMsg(true);
+    setTimeout(() => setClientSavedMsg(false), 3000);
+  };
+
   const formatTime = (isoString?: string) => {
     if (!isoString) return 'Never';
     return new Date(isoString).toLocaleString(undefined, {
@@ -247,20 +263,25 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
             {!isAuthenticated ? (
               <div className="space-y-3">
                 <p className="text-xs text-zinc-400 leading-relaxed font-medium">
-                  Connect your Google account to automatically store silent backups in your private Google Drive app storage, making it seamless to restore your workout history across any phone or computer.
+                  Connect your Google account to automatically store private backups in your Google Drive App Data folder, making it seamless to restore your workout history across any device.
                 </p>
 
                 {error && (
-                  <div className="p-3 bg-amber-950/50 border border-amber-800/60 rounded-xl text-xs text-amber-300 font-medium">
-                    {error}
+                  <div className="p-3 bg-amber-950/50 border border-amber-800/60 rounded-xl text-xs text-amber-300 font-medium flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Google Sign-In Notice</span>
+                    </div>
+                    <span>{error}</span>
                   </div>
                 )}
 
                 <button
+                  id="connect-google-drive-btn"
                   onClick={signIn}
-                  className="w-full py-3 px-4 bg-white hover:bg-zinc-100 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2.5 shadow-md active:scale-98 transition-all"
+                  className="w-full py-3 px-4 bg-white hover:bg-zinc-100 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2.5 shadow-md active:scale-98 transition-all cursor-pointer"
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
@@ -268,6 +289,45 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
                   </svg>
                   <span>Connect Google Drive</span>
                 </button>
+
+                {/* Optional OAuth Configuration for custom domains/deployments */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowOAuthSettings(!showOAuthSettings)}
+                    className="text-[11px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 font-medium transition-colors"
+                  >
+                    <Settings className="w-3 h-3" />
+                    <span>{showOAuthSettings ? 'Hide OAuth Settings' : 'Custom OAuth Settings'}</span>
+                  </button>
+
+                  {showOAuthSettings && (
+                    <div className="mt-2 p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2 text-xs">
+                      <p className="text-[11px] text-zinc-400">
+                        Active Google OAuth Client ID (from Google Cloud Console):
+                      </p>
+                      <input
+                        type="text"
+                        value={tempClientId}
+                        onChange={(e) => setTempClientId(e.target.value)}
+                        placeholder="your-client-id.apps.googleusercontent.com"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-sky-500"
+                      />
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={handleSaveClientId}
+                          className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold rounded-md transition-colors"
+                        >
+                          Save Client ID
+                        </button>
+                        {clientSavedMsg && (
+                          <span className="text-[11px] text-emerald-400 font-medium">Saved!</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -308,7 +368,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
                   <button
                     onClick={handleCloudBackup}
                     disabled={isSyncing}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-sky-950/50 disabled:opacity-50"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-sky-950/50 disabled:opacity-50 cursor-pointer"
                   >
                     <CloudUpload className={`w-4 h-4 ${isSyncing ? 'animate-bounce' : ''}`} />
                     <span>{isSyncing ? 'Syncing...' : 'Backup Now'}</span>
@@ -317,7 +377,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
                   <button
                     onClick={handleCloudRestore}
                     disabled={isSyncing}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-zinc-950 hover:bg-zinc-800 border border-zinc-750 text-zinc-200 font-bold rounded-xl text-xs transition-all disabled:opacity-50"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-zinc-950 hover:bg-zinc-800 border border-zinc-750 text-zinc-200 font-bold rounded-xl text-xs transition-all disabled:opacity-50 cursor-pointer"
                   >
                     <CloudDownload className="w-4 h-4 text-sky-400" />
                     <span>Restore Cloud</span>
@@ -344,7 +404,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
               id="export-json-btn"
               onClick={handleExportJSON}
               disabled={isExporting}
-              className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-xl text-xs transition-colors touch-press shadow-md shadow-emerald-950/40"
+              className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-xl text-xs transition-colors touch-press shadow-md shadow-emerald-950/40 cursor-pointer"
             >
               <Download className="w-4 h-4 stroke-[2.5]" />
               <span>{isExporting ? 'Exporting IndexedDB...' : 'Download JSON Backup'}</span>
@@ -378,7 +438,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
               id="import-json-btn"
               onClick={() => fileInputRef.current?.click()}
               disabled={isImporting}
-              className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-bold rounded-xl text-xs transition-colors touch-press"
+              className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-bold rounded-xl text-xs transition-colors touch-press cursor-pointer"
             >
               <Upload className="w-4 h-4" />
               <span>{isImporting ? 'Reading & Validating JSON...' : 'Select File to Restore'}</span>
@@ -402,7 +462,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
               id="seed-demo-history-btn"
               onClick={handleSeed}
               disabled={isSeeding}
-              className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-amber-400 font-bold rounded-xl text-xs transition-colors touch-press"
+              className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-amber-400 font-bold rounded-xl text-xs transition-colors touch-press cursor-pointer"
             >
               <RefreshCw className={`w-4 h-4 ${isSeeding ? 'animate-spin' : ''}`} />
               <span>{isSeeding ? 'Seeding IndexedDB...' : 'Generate Sample Workouts'}</span>
@@ -414,7 +474,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
             <span className="text-xs text-zinc-500 font-medium">Need a fresh start?</span>
             <button
               onClick={handleClear}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-rose-400 hover:text-rose-300 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/30 rounded-xl transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-rose-400 hover:text-rose-300 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/30 rounded-xl transition-colors cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Clear Database</span>
@@ -426,7 +486,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
         <div className="px-6 py-4 border-t border-zinc-800 bg-zinc-950/70 flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2 text-xs font-bold text-zinc-300 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl transition-colors"
+            className="px-5 py-2 text-xs font-bold text-zinc-300 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl transition-colors cursor-pointer"
           >
             Done
           </button>
