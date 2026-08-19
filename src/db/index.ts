@@ -3,15 +3,20 @@ import {
   Workout,
   ExerciseLog,
   CardioLog,
+  CustomExercise,
   WorkoutWithDetails,
   StreakStats,
-  ExportDataPayload
+  ExportDataPayload,
+  PREDEFINED_EXERCISES,
+  ExerciseSet,
+  ExerciseCategory
 } from '../types';
 
 export class WorkoutTrackerDatabase extends Dexie {
   workouts!: Table<Workout, number>;
   exercise_logs!: Table<ExerciseLog, number>;
   cardio_logs!: Table<CardioLog, number>;
+  custom_exercises!: Table<CustomExercise, number>;
 
   constructor() {
     super('WorkoutTrackerDB');
@@ -20,10 +25,184 @@ export class WorkoutTrackerDatabase extends Dexie {
       exercise_logs: '++id, workout_id, exercise_name, category',
       cardio_logs: '++id, workout_id, activity_type'
     });
+    this.version(2).stores({
+      custom_exercises: '++id, &name, category'
+    });
   }
 }
 
 export const db = new WorkoutTrackerDatabase();
+
+/**
+ * Fetch all custom created exercises from IndexedDB
+ */
+export async function getAllCustomExercises(): Promise<CustomExercise[]> {
+  try {
+    return await db.custom_exercises.toArray();
+  } catch (err) {
+    console.error('Error fetching custom exercises:', err);
+    return [];
+  }
+}
+
+/**
+ * Save or update a custom exercise in IndexedDB
+ */
+export async function saveCustomExercise(exercise: {
+  name: string;
+  category: ExerciseCategory;
+  defaultReps?: number;
+  defaultWeight?: number;
+}): Promise<number | undefined> {
+  const trimmedName = exercise.name.trim();
+  if (!trimmedName) return undefined;
+
+  try {
+    const existing = await db.custom_exercises.where('name').equalsIgnoreCase(trimmedName).first();
+    if (existing && existing.id) {
+      await db.custom_exercises.update(existing.id, {
+        category: exercise.category,
+        defaultReps: exercise.defaultReps ?? existing.defaultReps ?? 10,
+        defaultWeight: exercise.defaultWeight ?? existing.defaultWeight ?? 50
+      });
+      return existing.id;
+    } else {
+      return await db.custom_exercises.add({
+        name: trimmedName,
+        category: exercise.category,
+        defaultReps: exercise.defaultReps ?? 10,
+        defaultWeight: exercise.defaultWeight ?? 50,
+        isCustom: true,
+        created_at: Date.now()
+      });
+    }
+  } catch (err) {
+    console.error('Error saving custom exercise:', err);
+    return undefined;
+  }
+}
+
+/**
+ * Delete a custom exercise from IndexedDB
+ */
+export async function deleteCustomExercise(nameOrId: string | number): Promise<void> {
+  try {
+    if (typeof nameOrId === 'number') {
+      await db.custom_exercises.delete(nameOrId);
+    } else {
+      await db.custom_exercises.where('name').equalsIgnoreCase(nameOrId).delete();
+    }
+  } catch (err) {
+    console.error('Error deleting custom exercise:', err);
+  }
+}
+
+/**
+ * Get comprehensive set-by-set workout history for a specific exercise
+ */
+export async function getExerciseHistory(exerciseName: string): Promise<Array<{
+  date: string;
+  workoutId: number;
+  category: string;
+  sets: ExerciseSet[];
+  notes?: string;
+  maxWeight: number;
+  totalVolume: number;
+  estimated1RM: number;
+}>> {
+  const normName = exerciseName.trim().toLowerCase();
+  const allLogs = await db.exercise_logs.toArray();
+  const matchedLogs = allLogs.filter(l => l.exercise_name.trim().toLowerCase() === normName);
+
+  if (matchedLogs.length === 0) return [];
+
+  const allWorkouts = await db.workouts.toArray();
+  const workoutMap = new Map<number, Workout>();
+  allWorkouts.forEach(w => {
+    if (w.id) workoutMap.set(w.id, w);
+  });
+
+  const history = matchedLogs.map(log => {
+    const workout = workoutMap.get(log.workout_id);
+    const date = workout ? workout.date : 'Unknown date';
+    let maxWeight = 0;
+    let totalVolume = 0;
+    let max1RM = 0;
+
+    log.sets.forEach(s => {
+      const weight = Number(s.weight_lbs) || 0;
+      const reps = Number(s.reps) || 0;
+      totalVolume += weight * reps;
+      if (weight > maxWeight) maxWeight = weight;
+      const est1RM = weight > 0 && reps > 0 ? Math.round(weight * (1 + reps / 30)) : weight;
+      if (est1RM > max1RM) max1RM = est1RM;
+    });
+
+    return {
+      date,
+      workoutId: log.workout_id,
+      category: log.category,
+      sets: log.sets,
+      notes: log.notes,
+      maxWeight,
+      totalVolume,
+      estimated1RM: max1RM
+    };
+  });
+
+  // Sort chronologically descending (newest first)
+  return history.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * Get PR summary and last recorded weight/reps for an exercise
+ */
+export async function getExercisePRStats(exerciseName: string): Promise<{
+  maxWeight: number;
+  maxRepsAtMaxWeight: number;
+  estimated1RM: number;
+  totalSets: number;
+  lastDate: string;
+  lastSets: ExerciseSet[];
+} | null> {
+  const history = await getExerciseHistory(exerciseName);
+  if (history.length === 0) return null;
+
+  let maxWeight = 0;
+  let maxRepsAtMaxWeight = 0;
+  let estimated1RM = 0;
+  let totalSets = 0;
+
+  history.forEach(session => {
+    session.sets.forEach(s => {
+      totalSets += 1;
+      const weight = Number(s.weight_lbs) || 0;
+      const reps = Number(s.reps) || 0;
+      const est1RM = weight > 0 && reps > 0 ? Math.round(weight * (1 + reps / 30)) : weight;
+
+      if (est1RM > estimated1RM) {
+        estimated1RM = est1RM;
+      }
+      if (weight > maxWeight) {
+        maxWeight = weight;
+        maxRepsAtMaxWeight = reps;
+      } else if (weight === maxWeight && reps > maxRepsAtMaxWeight) {
+        maxRepsAtMaxWeight = reps;
+      }
+    });
+  });
+
+  const newestSession = history[0];
+
+  return {
+    maxWeight,
+    maxRepsAtMaxWeight,
+    estimated1RM,
+    totalSets,
+    lastDate: newestSession?.date || '',
+    lastSets: newestSession?.sets || []
+  };
+}
 
 /**
  * Fetch all workouts for a given date YYYY-MM-DD
@@ -75,7 +254,7 @@ export async function saveWorkoutWithDetails(
   exercises: Array<Omit<ExerciseLog, 'id' | 'workout_id'> & { id?: number }>,
   cardio?: (Omit<CardioLog, 'id' | 'workout_id'> & { id?: number }) | null
 ): Promise<number> {
-  return await db.transaction('rw', db.workouts, db.exercise_logs, db.cardio_logs, async () => {
+  return await db.transaction('rw', db.workouts, db.exercise_logs, db.cardio_logs, db.custom_exercises, async () => {
     let workoutId = workoutData.id;
 
     if (workoutId) {
@@ -103,8 +282,9 @@ export async function saveWorkoutWithDetails(
       });
     }
 
-    // Insert exercises
+    // Insert exercises and auto-register custom exercises if not already present
     if (exercises && exercises.length > 0) {
+      const predefinedNames = new Set(PREDEFINED_EXERCISES.map(p => p.name.toLowerCase()));
       const exercisesToInsert: ExerciseLog[] = exercises.map(ex => ({
         workout_id: workoutId as number,
         exercise_name: ex.exercise_name,
@@ -113,6 +293,25 @@ export async function saveWorkoutWithDetails(
         notes: ex.notes || ''
       }));
       await db.exercise_logs.bulkAdd(exercisesToInsert);
+
+      // Check for non-predefined exercises to save permanently
+      for (const ex of exercises) {
+        const trimmed = ex.exercise_name.trim();
+        if (trimmed && !predefinedNames.has(trimmed.toLowerCase())) {
+          const existing = await db.custom_exercises.where('name').equalsIgnoreCase(trimmed).first();
+          if (!existing) {
+            const firstSet = ex.sets[0];
+            await db.custom_exercises.add({
+              name: trimmed,
+              category: ex.category,
+              defaultReps: firstSet?.reps || 10,
+              defaultWeight: firstSet?.weight_lbs || 50,
+              isCustom: true,
+              created_at: Date.now()
+            });
+          }
+        }
+      }
     }
 
     // Insert cardio log
@@ -273,6 +472,7 @@ export async function exportDatabaseJSON(): Promise<ExportDataPayload> {
   const workouts = await db.workouts.toArray();
   const exercise_logs = await db.exercise_logs.toArray();
   const cardio_logs = await db.cardio_logs.toArray();
+  const custom_exercises = await db.custom_exercises.toArray();
 
   return {
     version: 1,
@@ -280,7 +480,8 @@ export async function exportDatabaseJSON(): Promise<ExportDataPayload> {
     exportDate: new Date().toISOString(),
     workouts,
     exercise_logs,
-    cardio_logs
+    cardio_logs,
+    custom_exercises
   };
 }
 
@@ -292,11 +493,12 @@ export async function importDatabaseJSON(payload: ExportDataPayload, replaceAll 
     throw new Error('Invalid JSON backup file format.');
   }
 
-  return await db.transaction('rw', db.workouts, db.exercise_logs, db.cardio_logs, async () => {
+  return await db.transaction('rw', db.workouts, db.exercise_logs, db.cardio_logs, db.custom_exercises, async () => {
     if (replaceAll) {
       await db.workouts.clear();
       await db.exercise_logs.clear();
       await db.cardio_logs.clear();
+      await db.custom_exercises.clear();
     }
 
     // Mapping old workout ids to newly inserted ids if merging
@@ -304,8 +506,25 @@ export async function importDatabaseJSON(payload: ExportDataPayload, replaceAll 
       if (payload.workouts.length > 0) await db.workouts.bulkAdd(payload.workouts);
       if (payload.exercise_logs?.length > 0) await db.exercise_logs.bulkAdd(payload.exercise_logs);
       if (payload.cardio_logs?.length > 0) await db.cardio_logs.bulkAdd(payload.cardio_logs);
+      if (payload.custom_exercises?.length) await db.custom_exercises.bulkAdd(payload.custom_exercises);
     } else {
       // Merge mode
+      if (payload.custom_exercises && payload.custom_exercises.length > 0) {
+        for (const ce of payload.custom_exercises) {
+          const existing = await db.custom_exercises.where('name').equalsIgnoreCase(ce.name).first();
+          if (!existing) {
+            await db.custom_exercises.add({
+              name: ce.name,
+              category: ce.category,
+              defaultReps: ce.defaultReps || 10,
+              defaultWeight: ce.defaultWeight || 50,
+              isCustom: true,
+              created_at: ce.created_at || Date.now()
+            });
+          }
+        }
+      }
+
       for (const w of payload.workouts) {
         const oldId = w.id;
         const newId = await db.workouts.add({

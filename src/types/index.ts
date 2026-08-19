@@ -69,6 +69,17 @@ export interface ExportDataPayload {
   workouts: Workout[];
   exercise_logs: ExerciseLog[];
   cardio_logs: CardioLog[];
+  custom_exercises?: CustomExercise[];
+}
+
+export interface CustomExercise {
+  id?: number;
+  name: string;
+  category: ExerciseCategory;
+  defaultReps?: number;
+  defaultWeight?: number;
+  isCustom?: boolean;
+  created_at?: number;
 }
 
 export interface PredefinedExercise {
@@ -76,6 +87,7 @@ export interface PredefinedExercise {
   category: ExerciseCategory;
   defaultReps?: number;
   defaultWeight?: number;
+  isCustom?: boolean;
 }
 
 export const PREDEFINED_EXERCISES: PredefinedExercise[] = [
@@ -83,10 +95,12 @@ export const PREDEFINED_EXERCISES: PredefinedExercise[] = [
   { name: 'Barbell Bench Press', category: 'push', defaultReps: 8, defaultWeight: 185 },
   { name: 'Incline Dumbbell Press', category: 'push', defaultReps: 10, defaultWeight: 65 },
   { name: 'Overhead Shoulder Press', category: 'push', defaultReps: 8, defaultWeight: 115 },
+  { name: 'Dumbbell Lateral Raise', category: 'push', defaultReps: 12, defaultWeight: 25 },
+  { name: 'Cable Lateral Raise', category: 'push', defaultReps: 12, defaultWeight: 25 },
   { name: 'Dips (Weighted)', category: 'push', defaultReps: 10, defaultWeight: 25 },
   { name: 'Push-Ups', category: 'push', defaultReps: 20, defaultWeight: 0 },
-  { name: 'Cable Lateral Raise', category: 'push', defaultReps: 12, defaultWeight: 25 },
   { name: 'Tricep Rope Pushdown', category: 'push', defaultReps: 12, defaultWeight: 50 },
+  { name: 'Skull Crushers', category: 'push', defaultReps: 10, defaultWeight: 65 },
 
   // Pull
   { name: 'Barbell Deadlift', category: 'pull', defaultReps: 5, defaultWeight: 275 },

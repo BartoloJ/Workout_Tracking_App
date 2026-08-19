@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   Dumbbell,
@@ -20,7 +20,9 @@ import {
   Minus,
   Volume2,
   VolumeX,
-  Maximize2
+  Maximize2,
+  Trophy,
+  Award
 } from 'lucide-react';
 import {
   Workout,
@@ -30,10 +32,18 @@ import {
   WorkoutType,
   ExerciseCategory,
   ExerciseSet,
+  CustomExercise,
+  PredefinedExercise,
   PREDEFINED_EXERCISES,
   CARDIO_ACTIVITIES
 } from '../types';
-import { saveWorkoutWithDetails } from '../db';
+import {
+  saveWorkoutWithDetails,
+  getAllCustomExercises,
+  saveCustomExercise,
+  deleteCustomExercise,
+  getExercisePRStats
+} from '../db';
 import { useGoogleAuth } from '../contexts/GoogleAuthContext';
 import { useRestTimer } from '../contexts/RestTimerContext';
 import confetti from 'canvas-confetti';
@@ -84,11 +94,15 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
 
   // Strength exercises state
   const [exercises, setExercises] = useState<Array<Omit<ExerciseLog, 'id' | 'workout_id'> & { id?: number }>>([]);
+  const [customExercises, setCustomExercises] = useState<CustomExercise[]>([]);
+  const [exercisePRMap, setExercisePRMap] = useState<Record<string, { maxWeight: number; maxRepsAtMaxWeight: number; estimated1RM: number; lastDate: string } | null>>({});
   const [showAddExercisePicker, setShowAddExercisePicker] = useState<boolean>(false);
   const [exerciseSearch, setExerciseSearch] = useState<string>('');
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<ExerciseCategory | 'all'>('all');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<ExerciseCategory | 'all' | 'custom'>('all');
   const [customExerciseName, setCustomExerciseName] = useState<string>('');
   const [customCategory, setCustomCategory] = useState<ExerciseCategory>('push');
+  const [customDefaultWeight, setCustomDefaultWeight] = useState<number>(50);
+  const [customDefaultReps, setCustomDefaultReps] = useState<number>(10);
 
   // Cardio state
   const [cardioActivity, setCardioActivity] = useState<string>('running');
@@ -98,6 +112,69 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   const [avgHeartRate, setAvgHeartRate] = useState<string>('138');
   const [calories, setCalories] = useState<string>('350');
   const [cardioNotes, setCardioNotes] = useState<string>('');
+
+  // Load custom exercises on open
+  useEffect(() => {
+    if (isOpen) {
+      loadCustomExercises();
+    }
+  }, [isOpen]);
+
+  const loadCustomExercises = async () => {
+    try {
+      const customs = await getAllCustomExercises();
+      setCustomExercises(customs);
+    } catch (err) {
+      console.error('Failed to load custom exercises:', err);
+    }
+  };
+
+  // Load PR stats for current exercises
+  useEffect(() => {
+    if (!isOpen || exercises.length === 0) return;
+
+    let isMounted = true;
+    const fetchPRs = async () => {
+      const newMap: Record<string, { maxWeight: number; maxRepsAtMaxWeight: number; estimated1RM: number; lastDate: string } | null> = {};
+      for (const ex of exercises) {
+        if (!newMap[ex.exercise_name]) {
+          try {
+            const stats = await getExercisePRStats(ex.exercise_name);
+            newMap[ex.exercise_name] = stats;
+          } catch (e) {
+            newMap[ex.exercise_name] = null;
+          }
+        }
+      }
+      if (isMounted) {
+        setExercisePRMap(prev => ({ ...prev, ...newMap }));
+      }
+    };
+
+    fetchPRs();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, exercises]);
+
+  // Combined library of exercises
+  const allAvailableExercises = useMemo(() => {
+    const predefinedNames = new Set(PREDEFINED_EXERCISES.map(p => p.name.toLowerCase()));
+    const customOnly = customExercises.filter(c => !predefinedNames.has(c.name.toLowerCase()));
+
+    const combined: PredefinedExercise[] = [
+      ...PREDEFINED_EXERCISES.map(e => ({ ...e, isCustom: false })),
+      ...customOnly.map(c => ({
+        name: c.name,
+        category: c.category,
+        defaultReps: c.defaultReps || 10,
+        defaultWeight: c.defaultWeight || 50,
+        isCustom: true
+      }))
+    ];
+
+    return combined;
+  }, [customExercises]);
 
   // Initialize or reset form when modal opens or edit data changes
   useEffect(() => {
@@ -183,10 +260,32 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
     setExerciseSearch('');
   };
 
-  const handleAddCustomExercise = () => {
-    if (!customExerciseName.trim()) return;
-    handleAddPredefinedExercise(customExerciseName.trim(), customCategory, 10, 50);
+  const handleAddCustomExercise = async () => {
+    const trimmed = customExerciseName.trim();
+    if (!trimmed) return;
+
+    // Permanently save to IndexedDB custom_exercises table so it's remembered everywhere
+    await saveCustomExercise({
+      name: trimmed,
+      category: customCategory,
+      defaultReps: customDefaultReps,
+      defaultWeight: customDefaultWeight
+    });
+
+    // Refresh custom exercises
+    await loadCustomExercises();
+
+    // Add directly to current session
+    handleAddPredefinedExercise(trimmed, customCategory, customDefaultReps, customDefaultWeight);
     setCustomExerciseName('');
+  };
+
+  const handleDeleteSavedCustomExercise = async (e: React.MouseEvent, exName: string) => {
+    e.stopPropagation();
+    if (confirm(`Remove "${exName}" from your custom exercise library?`)) {
+      await deleteCustomExercise(exName);
+      await loadCustomExercises();
+    }
   };
 
   const handleRemoveExercise = (index: number) => {
@@ -415,12 +514,19 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
     other: 'bg-zinc-800 text-zinc-300 border-zinc-700'
   };
 
-  // Filter predefined exercises
-  const filteredPredefined = PREDEFINED_EXERCISES.filter(ex => {
-    const matchesSearch = ex.name.toLowerCase().includes(exerciseSearch.toLowerCase());
-    const matchesCategory = selectedCategoryFilter === 'all' || ex.category === selectedCategoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  // Filter available exercises (both predefined and saved custom)
+  const filteredAvailableExercises = useMemo(() => {
+    return allAvailableExercises.filter(ex => {
+      const matchesSearch = ex.name.toLowerCase().includes(exerciseSearch.toLowerCase());
+      const matchesCategory =
+        selectedCategoryFilter === 'all'
+          ? true
+          : selectedCategoryFilter === 'custom'
+          ? Boolean(ex.isCustom)
+          : ex.category === selectedCategoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [allAvailableExercises, exerciseSearch, selectedCategoryFilter]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
@@ -784,8 +890,9 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
               {showAddExercisePicker && (
                 <div className="p-4 bg-zinc-950 border border-emerald-500/40 rounded-xl space-y-3 animate-in fade-in duration-150">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide">
-                      Select or Search Exercise
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      Select or Add Custom Exercise
                     </span>
                     <button
                       type="button"
@@ -801,7 +908,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                     <Search className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
                     <input
                       type="text"
-                      placeholder="Search bench press, squat, deadlift, pull-up..."
+                      placeholder="Search bench press, lateral raise, squats, custom workouts..."
                       value={exerciseSearch}
                       onChange={e => setExerciseSearch(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:border-emerald-500"
@@ -810,7 +917,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
 
                   {/* Category Filter Pills */}
                   <div className="flex flex-wrap gap-1.5 text-xs">
-                    {(['all', 'push', 'pull', 'legs', 'core'] as const).map(cat => (
+                    {(['all', 'custom', 'push', 'pull', 'legs', 'core', 'arms'] as const).map(cat => (
                       <button
                         key={cat}
                         type="button"
@@ -821,64 +928,108 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                             : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
                         }`}
                       >
-                        {cat}
+                        {cat === 'custom' ? `Custom (${customExercises.length})` : cat}
                       </button>
                     ))}
                   </div>
 
-                  {/* Predefined List */}
-                  <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
-                    {filteredPredefined.map(ex => (
-                      <button
-                        key={ex.name}
-                        type="button"
-                        onClick={() => handleAddPredefinedExercise(ex.name, ex.category, ex.defaultReps, ex.defaultWeight)}
-                        className="w-full flex items-center justify-between p-2 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 text-left transition-colors border border-transparent hover:border-zinc-700"
-                      >
-                        <span className="text-xs font-semibold text-zinc-200">
-                          {ex.name}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${categoryBadgeColors[ex.category]}`}>
-                            {ex.category.toUpperCase()}
-                          </span>
-                          <span className="text-[11px] text-zinc-500 font-mono-numbers">
-                            {ex.defaultWeight} lbs
-                          </span>
+                  {/* Predefined & Custom Exercise List */}
+                  <div className="max-h-52 overflow-y-auto space-y-1 pr-1">
+                    {filteredAvailableExercises.length === 0 ? (
+                      <div className="text-center py-4 text-xs text-zinc-500">
+                        No matching exercises found. Add it as a custom exercise below!
+                      </div>
+                    ) : (
+                      filteredAvailableExercises.map(ex => (
+                        <div
+                          key={ex.name}
+                          onClick={() => handleAddPredefinedExercise(ex.name, ex.category, ex.defaultReps, ex.defaultWeight)}
+                          className="w-full flex items-center justify-between p-2 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 text-left transition-colors border border-transparent hover:border-zinc-700 cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-zinc-200 group-hover:text-emerald-400 transition-colors">
+                              {ex.name}
+                            </span>
+                            {ex.isCustom && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800/60">
+                                SAVED CUSTOM
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${categoryBadgeColors[ex.category]}`}>
+                              {ex.category.toUpperCase()}
+                            </span>
+                            <span className="text-[11px] text-zinc-500 font-mono-numbers">
+                              {ex.defaultWeight} lbs
+                            </span>
+                            {ex.isCustom && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteSavedCustomExercise(e, ex.name)}
+                                className="p-1 text-zinc-500 hover:text-rose-400 transition-colors rounded hover:bg-rose-950/40 ml-1"
+                                title="Delete from saved custom library"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </button>
-                    ))}
+                      ))
+                    )}
                   </div>
 
                   {/* Custom Exercise creator */}
-                  <div className="pt-2 border-t border-zinc-800 flex flex-col sm:flex-row items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="Or create custom exercise name..."
-                      value={customExerciseName}
-                      onChange={e => setCustomExerciseName(e.target.value)}
-                      className="w-full sm:flex-1 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-emerald-500"
-                    />
-                    <select
-                      value={customCategory}
-                      onChange={e => setCustomCategory(e.target.value as ExerciseCategory)}
-                      className="w-full sm:w-auto px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-zinc-300 uppercase font-semibold"
-                    >
-                      <option value="push">Push</option>
-                      <option value="pull">Pull</option>
-                      <option value="legs">Legs</option>
-                      <option value="core">Core</option>
-                      <option value="arms">Arms</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleAddCustomExercise}
-                      disabled={!customExerciseName.trim()}
-                      className="w-full sm:w-auto px-3 py-1.5 bg-emerald-500 disabled:opacity-50 text-zinc-950 text-xs font-bold rounded-lg hover:bg-emerald-400 transition-colors"
-                    >
-                      + Add Custom
-                    </button>
+                  <div className="pt-2.5 border-t border-zinc-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wide">
+                        Save New Custom Exercise
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        Saves permanently & tracks PR progress
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. Dumbbell Lateral Raise, Incline Hammer Curl..."
+                        value={customExerciseName}
+                        onChange={e => setCustomExerciseName(e.target.value)}
+                        className="sm:col-span-5 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-emerald-500"
+                      />
+                      <select
+                        value={customCategory}
+                        onChange={e => setCustomCategory(e.target.value as ExerciseCategory)}
+                        className="sm:col-span-3 px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-zinc-300 uppercase font-semibold"
+                      >
+                        <option value="push">Push (Chest/Shoulders/Triceps)</option>
+                        <option value="pull">Pull (Back/Biceps/Rear Delts)</option>
+                        <option value="legs">Legs (Quads/Hamstrings/Calves)</option>
+                        <option value="core">Core (Abs/Obliques)</option>
+                        <option value="arms">Arms (Biceps/Triceps/Forearms)</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <div className="sm:col-span-2 flex items-center gap-1 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1">
+                        <input
+                          type="number"
+                          placeholder="lbs"
+                          value={customDefaultWeight}
+                          onChange={e => setCustomDefaultWeight(Number(e.target.value) || 0)}
+                          className="w-full bg-transparent text-xs text-zinc-100 text-center focus:outline-none"
+                        />
+                        <span className="text-[10px] text-zinc-500">lbs</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddCustomExercise}
+                        disabled={!customExerciseName.trim()}
+                        className="sm:col-span-2 px-3 py-1.5 bg-emerald-500 disabled:opacity-50 text-zinc-950 text-xs font-bold rounded-lg hover:bg-emerald-400 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Save
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -893,53 +1044,77 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {exercises.map((ex, exIdx) => (
-                    <div
-                      key={`ex-${exIdx}`}
-                      className="p-3.5 sm:p-4 bg-zinc-950/60 border border-zinc-800 rounded-xl space-y-3"
-                    >
-                      {/* Exercise Card Header */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${categoryBadgeColors[ex.category]}`}>
-                            {ex.category.toUpperCase()}
-                          </span>
-                          <h4 className="font-bold text-sm text-zinc-100">
-                            {ex.exercise_name}
-                          </h4>
-                        </div>
+                  {exercises.map((ex, exIdx) => {
+                    const prData = exercisePRMap[ex.exercise_name];
+                    return (
+                      <div
+                        key={`ex-${exIdx}`}
+                        className="p-3.5 sm:p-4 bg-zinc-950/60 border border-zinc-800 rounded-xl space-y-3"
+                      >
+                        {/* Exercise Card Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${categoryBadgeColors[ex.category]}`}>
+                                {ex.category.toUpperCase()}
+                              </span>
+                              <h4 className="font-bold text-sm text-zinc-100">
+                                {ex.exercise_name}
+                              </h4>
+                            </div>
 
-                        <div className="flex items-center gap-2.5">
-                          {ex.sets.length > 1 && (
+                            {/* PR & Progress Indicator */}
+                            {prData && prData.maxWeight > 0 && (
+                              <div className="flex items-center gap-2 mt-1 text-[11px] text-amber-400 font-medium">
+                                <Trophy className="w-3 h-3 text-amber-400 shrink-0" />
+                                <span>
+                                  PR: <strong>{prData.maxWeight} lbs</strong> × {prData.maxRepsAtMaxWeight} reps
+                                </span>
+                                {prData.estimated1RM > prData.maxWeight && (
+                                  <span className="text-zinc-400 font-mono-numbers">
+                                    • Est 1RM: {prData.estimated1RM} lbs
+                                  </span>
+                                )}
+                                {prData.lastDate && (
+                                  <span className="text-zinc-500 hidden sm:inline">
+                                    ({prData.lastDate})
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2.5 self-end sm:self-auto">
+                            {ex.sets.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleSyncAllSetsWeight(exIdx)}
+                                className="text-[11px] font-semibold text-zinc-400 hover:text-emerald-400 bg-zinc-900/80 hover:bg-zinc-800 px-2 py-1 rounded-md border border-zinc-800 flex items-center gap-1 transition-colors"
+                                title="Sync all sets to match Set #1's weight"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                <span className="hidden sm:inline">Sync All to #{ex.sets[0]?.weight_lbs || 0} lbs</span>
+                                <span className="sm:hidden">Sync</span>
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => handleSyncAllSetsWeight(exIdx)}
-                              className="text-[11px] font-semibold text-zinc-400 hover:text-emerald-400 bg-zinc-900/80 hover:bg-zinc-800 px-2 py-1 rounded-md border border-zinc-800 flex items-center gap-1 transition-colors"
-                              title="Sync all sets to match Set #1's weight"
+                              onClick={() => handleAddSet(exIdx)}
+                              className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
                             >
-                              <RefreshCw className="w-3 h-3" />
-                              <span className="hidden sm:inline">Sync All to #{ex.sets[0]?.weight_lbs || 0} lbs</span>
-                              <span className="sm:hidden">Sync</span>
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add Set</span>
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleAddSet(exIdx)}
-                            className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Add Set</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveExercise(exIdx)}
-                            className="p-1 text-zinc-500 hover:text-rose-400 transition-colors"
-                            title="Remove exercise"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExercise(exIdx)}
+                              className="p-1 text-zinc-500 hover:text-rose-400 transition-colors"
+                              title="Remove exercise"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
 
                       {/* Sets Table */}
                       <div className="space-y-1.5">
@@ -1060,8 +1235,9 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                         ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
+              </div>
               )}
             </div>
           )}
