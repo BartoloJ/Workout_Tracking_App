@@ -240,8 +240,6 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
     }
   }, [isOpen, initialDate, editWorkoutData]);
 
-  if (!isOpen) return null;
-
   // Strength Helper Functions
   const handleAddPredefinedExercise = (name: string, category: ExerciseCategory, defaultReps = 10, defaultWeight = 135) => {
     setExercises(prev => [
@@ -527,6 +525,8 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
       return matchesSearch && matchesCategory;
     });
   }, [allAvailableExercises, exerciseSearch, selectedCategoryFilter]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
