@@ -21,7 +21,7 @@ interface GoogleAuthContextType {
   clearError: () => void;
 }
 
-const DEFAULT_CLIENT_ID = '205643621738-fd6k2ki0hmjtdf58ai5goan3cvcshlbq.apps.googleusercontent.com';
+const DEFAULT_CLIENT_ID = '952344848598-dfpruscj9kq7v6p98nlssv5bctecfmqc.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 
 const GoogleAuthContext = createContext<GoogleAuthContextType>({
