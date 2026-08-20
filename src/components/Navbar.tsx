@@ -10,7 +10,8 @@ import {
   Wifi,
   WifiOff,
   Sparkles,
-  Cloud
+  Cloud,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useGoogleAuth } from '../contexts/GoogleAuthContext';
 import { useRestTimer } from '../contexts/RestTimerContext';
@@ -21,6 +22,7 @@ interface NavbarProps {
   onOpenPRs: () => void;
   onOpenDataModal: () => void;
   onOpenPWAModal: () => void;
+  onOpenPreferences: () => void;
   onSeedSampleData: () => void;
   totalWorkouts: number;
 }
@@ -31,6 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenPRs,
   onOpenDataModal,
   onOpenPWAModal,
+  onOpenPreferences,
   onSeedSampleData,
   totalWorkouts
 }) => {
@@ -168,6 +171,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="iOS PWA & Offline Guide"
           >
             <Smartphone className="w-4 h-4" />
+          </button>
+
+          {/* Minimalist Options / Display Preferences */}
+          <button
+            id="preferences-btn"
+            onClick={onOpenPreferences}
+            className="p-2 text-zinc-400 hover:text-emerald-400 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800 rounded-xl transition-colors touch-press"
+            title="Display & Minimalist Settings (Toggle Zone 2, Strength Volume, etc.)"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
           </button>
 
           {/* + Log Workout Primary CTA */}

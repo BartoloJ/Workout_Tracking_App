@@ -11,6 +11,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { WorkoutWithDetails, WorkoutType } from '../types';
+import { usePreferences } from '../contexts/PreferencesContext';
 
 interface WorkoutFeedProps {
   workouts: WorkoutWithDetails[];
@@ -23,15 +24,19 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
   onSelectWorkout,
   onOpenLogModal
 }) => {
+  const { preferences } = usePreferences();
   const [filterType, setFilterType] = useState<WorkoutType | 'all' | 'zone2'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Fallback if Zone 2 was active but user disabled Zone 2 in preferences
+  const activeFilter = (!preferences.showZone2 && filterType === 'zone2') ? 'all' : filterType;
+
   const filteredWorkouts = workouts.filter(w => {
     // Type Filter
-    if (filterType === 'zone2') {
+    if (activeFilter === 'zone2') {
       if (!w.cardio?.zone2) return false;
-    } else if (filterType !== 'all') {
-      if (w.workout.type !== filterType) return false;
+    } else if (activeFilter !== 'all') {
+      if (w.workout.type !== activeFilter) return false;
     }
 
     // Search Query (matches exercise names, notes, or date)
@@ -57,6 +62,14 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
     }
   };
 
+  const filterOptions = [
+    { id: 'all', label: 'All' },
+    { id: 'strength', label: 'Strength' },
+    { id: 'cardio', label: 'Cardio' },
+    { id: 'hybrid', label: 'Hybrid' },
+    ...(preferences.showZone2 ? [{ id: 'zone2', label: 'Zone 2' }] : [])
+  ];
+
   return (
     <section id="workout-history-feed-section" className="w-full bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 sm:p-8 backdrop-blur-sm space-y-5">
       {/* Header with Title and Search/Filters */}
@@ -69,24 +82,18 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
             </span>
           </h3>
           <p className="text-xs text-zinc-500 mt-0.5 font-medium">
-            Chronological breakdown of sets, reps, distance, and intensity
+            Chronological breakdown of logged workout sessions
           </p>
         </div>
 
         {/* Filter Pills */}
         <div className="flex flex-wrap gap-1.5 text-xs">
-          {[
-            { id: 'all', label: 'All' },
-            { id: 'strength', label: 'Strength' },
-            { id: 'cardio', label: 'Cardio' },
-            { id: 'hybrid', label: 'Hybrid' },
-            { id: 'zone2', label: 'Zone 2' },
-          ].map(f => (
+          {filterOptions.map(f => (
             <button
               key={f.id}
               onClick={() => setFilterType(f.id as any)}
               className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-                filterType === f.id
+                activeFilter === f.id
                   ? 'bg-emerald-500 text-zinc-950 shadow-sm'
                   : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
               }`}
@@ -118,7 +125,7 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className={preferences.compactFeedView ? 'space-y-2' : 'space-y-3'}>
           {filteredWorkouts.map((item, idx) => {
             const { workout, exercises, cardio } = item;
             const badgeClass = getIntensityBadge(workout.intensity_score);
@@ -131,11 +138,15 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
               <div
                 key={workout.id || `feed-${idx}`}
                 onClick={() => onSelectWorkout(workout.date)}
-                className="group cursor-pointer p-4 sm:p-5 bg-zinc-800/40 hover:bg-zinc-800/80 border border-zinc-800 hover:border-zinc-700 rounded-2xl transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 touch-press"
+                className={`group cursor-pointer bg-zinc-800/40 hover:bg-zinc-800/80 border border-zinc-800 hover:border-zinc-700 rounded-2xl transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 touch-press ${
+                  preferences.compactFeedView ? 'p-3 sm:p-3.5' : 'p-4 sm:p-5'
+                }`}
               >
                 {/* Left info: Date & Mode badge */}
-                <div className="flex items-start sm:items-center gap-3.5">
-                  <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 text-emerald-400 shrink-0 group-hover:border-emerald-500/40 transition-colors">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div className={`rounded-2xl bg-zinc-900 border border-zinc-800 text-emerald-400 shrink-0 group-hover:border-emerald-500/40 transition-colors ${
+                    preferences.compactFeedView ? 'p-2' : 'p-3'
+                  }`}>
                     {workout.type === 'hybrid' ? (
                       <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />
                     ) : workout.type === 'strength' ? (
@@ -145,7 +156,7 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
                     )}
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-sm text-zinc-100 font-mono-numbers">
                         {workout.date}
@@ -153,10 +164,12 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
                       <span className="text-xs text-zinc-400 capitalize font-medium">
                         • {workout.type}
                       </span>
-                      <span className={`text-[10px] font-mono-numbers font-bold px-2 py-0.5 rounded-full border ${badgeClass}`}>
-                        L{workout.intensity_score}
-                      </span>
-                      {cardio?.zone2 && (
+                      {preferences.showIntensityScore && (
+                        <span className={`text-[10px] font-mono-numbers font-bold px-2 py-0.5 rounded-full border ${badgeClass}`}>
+                          L{workout.intensity_score}
+                        </span>
+                      )}
+                      {preferences.showZone2 && cardio?.zone2 && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800/60 flex items-center gap-1">
                           <Heart className="w-2.5 h-2.5 fill-rose-400" />
                           Zone 2
@@ -174,22 +187,25 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
                       {exercises.length > 0 && cardio && <span className="text-zinc-600">•</span>}
                       {cardio && (
                         <span className="text-blue-300 capitalize font-medium">
-                          {cardio.activity_type} {cardio.distance_miles}mi ({cardio.duration_mins}m)
+                          {cardio.activity_type} {preferences.showCardioDistance ? `${cardio.distance_miles}mi ` : ''}({cardio.duration_mins}m)
                         </span>
+                      )}
+                      {preferences.showWorkoutNotes && workout.notes && !cardio && exercises.length === 0 && (
+                        <span className="text-zinc-400 italic">"{workout.notes}"</span>
                       )}
                     </div>
                   </div>
                 </div>
 
                 {/* Right stats & action arrow */}
-                <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
+                <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
                   <div className="text-left sm:text-right font-mono-numbers text-xs text-zinc-400">
-                    {totalVolume > 0 && (
+                    {preferences.showStrengthVolume && totalVolume > 0 && (
                       <span className="block font-bold text-zinc-200">
                         {totalVolume.toLocaleString()} lbs
                       </span>
                     )}
-                    {workout.duration_mins ? (
+                    {preferences.showDuration && workout.duration_mins ? (
                       <span className="text-[11px] text-zinc-500">
                         {workout.duration_mins} mins
                       </span>
@@ -208,3 +224,4 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
     </section>
   );
 };
+

@@ -18,6 +18,7 @@ import { PRTrackerModal } from './components/PRTrackerModal';
 import { RestTimerModal } from './components/RestTimerModal';
 import { FloatingRestTimer } from './components/FloatingRestTimer';
 import { PWAInstallModal } from './components/PWAInstallModal';
+import { PreferencesModal } from './components/PreferencesModal';
 import { useRestTimer } from './contexts/RestTimerContext';
 import { Plus, Dumbbell, Sparkles, Flame, Trophy, Timer, ArrowUp } from 'lucide-react';
 
@@ -56,6 +57,7 @@ export default function App() {
   const [isDataModalOpen, setIsDataModalOpen] = useState<boolean>(false);
   const [isPRModalOpen, setIsPRModalOpen] = useState<boolean>(false);
   const [isPWAModalOpen, setIsPWAModalOpen] = useState<boolean>(false);
+  const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState<boolean>(false);
 
   // Fetch all workouts and streak stats from IndexedDB
   const refreshData = useCallback(async () => {
@@ -141,6 +143,7 @@ export default function App() {
         onOpenPRs={() => setIsPRModalOpen(true)}
         onOpenDataModal={() => setIsDataModalOpen(true)}
         onOpenPWAModal={() => setIsPWAModalOpen(true)}
+        onOpenPreferences={() => setIsPreferencesModalOpen(true)}
         onSeedSampleData={async () => {
           await seedSampleWorkouts();
           refreshData();
@@ -200,6 +203,12 @@ export default function App() {
               className="hover:text-zinc-200 transition-colors"
             >
               Backup & Restore
+            </button>
+            <button
+              onClick={() => setIsPreferencesModalOpen(true)}
+              className="hover:text-emerald-400 transition-colors flex items-center gap-1"
+            >
+              <span>Display & Minimalist Settings</span>
             </button>
             <button
               onClick={() => setIsPWAModalOpen(true)}
@@ -276,6 +285,12 @@ export default function App() {
       <PWAInstallModal
         isOpen={isPWAModalOpen}
         onClose={() => setIsPWAModalOpen(false)}
+      />
+
+      {/* 7. Display Options & Minimalist Settings Modal */}
+      <PreferencesModal
+        isOpen={isPreferencesModalOpen}
+        onClose={() => setIsPreferencesModalOpen(false)}
       />
     </div>
   );

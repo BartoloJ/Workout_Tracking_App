@@ -12,6 +12,7 @@ import {
   Check
 } from 'lucide-react';
 import { WorkoutWithDetails } from '../types';
+import { usePreferences } from '../contexts/PreferencesContext';
 
 interface CalendarViewProps {
   currentDate: Date;
@@ -28,6 +29,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onSelectDay,
   onOpenLogModal
 }) => {
+  const { preferences } = usePreferences();
   const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
 
   // Month navigation helpers
@@ -346,8 +348,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
                         {/* Subtitle notes/sets */}
                         <div className="text-[10px] text-zinc-300/80 truncate font-mono-numbers">
-                          {dayWorkouts[0]?.workout.duration_mins ? `${dayWorkouts[0].workout.duration_mins}m • ` : ''}
-                          {dayWorkouts[0]?.cardio?.zone2 ? 'Zone 2' : `Level ${intensity}`}
+                          {preferences.showDuration && dayWorkouts[0]?.workout.duration_mins ? `${dayWorkouts[0].workout.duration_mins}m • ` : ''}
+                          {preferences.showZone2 && dayWorkouts[0]?.cardio?.zone2 ? 'Zone 2' : preferences.showIntensityScore ? `Level ${intensity}` : ''}
                         </div>
                       </div>
                     </div>

@@ -46,6 +46,7 @@ import {
 } from '../db';
 import { useGoogleAuth } from '../contexts/GoogleAuthContext';
 import { useRestTimer } from '../contexts/RestTimerContext';
+import { usePreferences } from '../contexts/PreferencesContext';
 import confetti from 'canvas-confetti';
 
 interface WorkoutModalProps {
@@ -65,6 +66,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
   const { isAuthenticated, autoSyncEnabled, backupNow } = useGoogleAuth();
+  const { preferences } = usePreferences();
   const {
     totalSeconds: timerTotalSecs,
     remainingSeconds: timerRemaining,
@@ -474,7 +476,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
             activity_type: cardioActivity,
             duration_mins: Number(cardioDurationMins) || 0,
             distance_miles: Number(cardioDistanceMiles) || 0,
-            zone2: isZone2,
+            zone2: preferences.showZone2 ? isZone2 : false,
             avg_hr: avgHeartRate ? Number(avgHeartRate) : undefined,
             calories: calories ? Number(calories) : undefined,
             notes: cardioNotes
@@ -650,63 +652,67 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
             </div>
 
             {/* Duration Input */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
-                Total Duration (mins)
-              </label>
-              <div className="relative">
-                <input
-                  id="workout-duration-input"
-                  type="number"
-                  min="1"
-                  max="600"
-                  value={durationMins}
-                  onChange={e => setDurationMins(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-100 font-mono-numbers focus:outline-none focus:border-emerald-500"
-                />
-                <span className="absolute right-3 top-2 text-xs text-zinc-500 pointer-events-none">
-                  min
-                </span>
+            {preferences.showDuration && (
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                  Total Duration (mins)
+                </label>
+                <div className="relative">
+                  <input
+                    id="workout-duration-input"
+                    type="number"
+                    min="1"
+                    max="600"
+                    value={durationMins}
+                    onChange={e => setDurationMins(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-100 font-mono-numbers focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="absolute right-3 top-2 text-xs text-zinc-500 pointer-events-none">
+                    min
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Intensity Score (1 to 4) Bar (Key GitHub heat-map driver) */}
-          <div className="bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/60">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                <Flame className="w-4 h-4 text-emerald-400" />
-                Intensity Level (Heatmap Shading: 1 - 4)
-              </label>
-              <span className="text-xs font-mono-numbers font-semibold text-emerald-400">
-                Score {intensityScore} of 4
-              </span>
-            </div>
+          {preferences.showIntensityScore && (
+            <div className="bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/60">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                  <Flame className="w-4 h-4 text-emerald-400" />
+                  Intensity Level (Heatmap Shading: 1 - 4)
+                </label>
+                <span className="text-xs font-mono-numbers font-semibold text-emerald-400">
+                  Score {intensityScore} of 4
+                </span>
+              </div>
 
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { score: 1, label: 'Light', desc: 'Active recovery', color: 'border-emerald-900 bg-emerald-950/50 text-emerald-400' },
-                { score: 2, label: 'Moderate', desc: 'Aerobic base / Steady', color: 'border-emerald-700 bg-emerald-800/50 text-emerald-200' },
-                { score: 3, label: 'Hard', desc: 'Vigorous volume', color: 'border-emerald-500 bg-emerald-600/60 text-white' },
-                { score: 4, label: 'Peak #15803d', desc: 'Max effort / PR', color: 'border-emerald-400 bg-[#15803d] text-white shadow-md' }
-              ].map(item => (
-                <button
-                  key={item.score}
-                  type="button"
-                  id={`intensity-score-btn-${item.score}`}
-                  onClick={() => setIntensityScore(item.score)}
-                  className={`p-2.5 rounded-xl border text-left transition-all touch-press ${
-                    intensityScore === item.score
-                      ? `${item.color} ring-2 ring-emerald-400 ring-offset-2 ring-offset-zinc-900`
-                      : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                  }`}
-                >
-                  <div className="text-xs font-bold">{item.score} • {item.label}</div>
-                  <div className="text-[10px] opacity-75 truncate">{item.desc}</div>
-                </button>
-              ))}
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { score: 1, label: 'Light', desc: 'Active recovery', color: 'border-emerald-900 bg-emerald-950/50 text-emerald-400' },
+                  { score: 2, label: 'Moderate', desc: 'Aerobic base / Steady', color: 'border-emerald-700 bg-emerald-800/50 text-emerald-200' },
+                  { score: 3, label: 'Hard', desc: 'Vigorous volume', color: 'border-emerald-500 bg-emerald-600/60 text-white' },
+                  { score: 4, label: 'Peak #15803d', desc: 'Max effort / PR', color: 'border-emerald-400 bg-[#15803d] text-white shadow-md' }
+                ].map(item => (
+                  <button
+                    key={item.score}
+                    type="button"
+                    id={`intensity-score-btn-${item.score}`}
+                    onClick={() => setIntensityScore(item.score)}
+                    className={`p-2.5 rounded-xl border text-left transition-all touch-press ${
+                      intensityScore === item.score
+                        ? `${item.color} ring-2 ring-emerald-400 ring-offset-2 ring-offset-zinc-900`
+                        : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                    }`}
+                  >
+                    <div className="text-xs font-bold">{item.score} • {item.label}</div>
+                    <div className="text-[10px] opacity-75 truncate">{item.desc}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Section 1: STRENGTH LOGGING */}
           {(workoutType === 'strength' || workoutType === 'hybrid') && (
@@ -1255,20 +1261,22 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                   </h3>
                 </div>
 
-                {/* Zone 2 Toggle Pill */}
-                <button
-                  type="button"
-                  id="zone2-toggle-btn"
-                  onClick={() => setIsZone2(!isZone2)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all touch-press ${
-                    isZone2
-                      ? 'bg-rose-950/80 text-rose-300 border-rose-600 shadow-sm shadow-rose-950'
-                      : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700'
-                  }`}
-                >
-                  <Heart className={`w-3.5 h-3.5 ${isZone2 ? 'fill-rose-400 text-rose-400 animate-pulse' : ''}`} />
-                  <span>Zone 2 Easy Pace: {isZone2 ? 'ON' : 'OFF'}</span>
-                </button>
+                {/* Zone 2 Toggle Pill (Only if Zone 2 preference is enabled) */}
+                {preferences.showZone2 && (
+                  <button
+                    type="button"
+                    id="zone2-toggle-btn"
+                    onClick={() => setIsZone2(!isZone2)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all touch-press ${
+                      isZone2
+                        ? 'bg-rose-950/80 text-rose-300 border-rose-600 shadow-sm shadow-rose-950'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700'
+                    }`}
+                  >
+                    <Heart className={`w-3.5 h-3.5 ${isZone2 ? 'fill-rose-400 text-rose-400 animate-pulse' : ''}`} />
+                    <span>Zone 2 Easy Pace: {isZone2 ? 'ON' : 'OFF'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Cardio Fields Grid */}
@@ -1302,27 +1310,29 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                 </div>
 
                 {/* Distance & Duration Inputs */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1">
-                      Distance (miles)
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="cardio-distance-input"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={cardioDistanceMiles}
-                        onChange={e => setCardioDistanceMiles(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-100 font-mono-numbers font-bold focus:outline-none focus:border-blue-500"
-                        placeholder="e.g. 5.0"
-                      />
-                      <span className="absolute right-3 top-2 text-xs text-zinc-500 font-mono">
-                        mi
-                      </span>
+                <div className={`grid ${preferences.showCardioDistance ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3`}>
+                  {preferences.showCardioDistance && (
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-400 mb-1">
+                        Distance (miles)
+                      </label>
+                      <div className="relative">
+                        <input
+                          id="cardio-distance-input"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={cardioDistanceMiles}
+                          onChange={e => setCardioDistanceMiles(Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-100 font-mono-numbers font-bold focus:outline-none focus:border-blue-500"
+                          placeholder="e.g. 5.0"
+                        />
+                        <span className="absolute right-3 top-2 text-xs text-zinc-500 font-mono">
+                          mi
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-semibold text-zinc-400 mb-1">
@@ -1346,7 +1356,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                 </div>
 
                 {/* Real-time Pace & Speed Indicator */}
-                {calculatedPace && (
+                {preferences.showCardioDistance && calculatedPace && (
                   <div className="flex items-center justify-between p-2.5 bg-blue-950/30 border border-blue-900/50 rounded-lg text-xs">
                     <span className="text-blue-300 font-medium flex items-center gap-1.5">
                       <Timer className="w-3.5 h-3.5" />
@@ -1361,35 +1371,37 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                 )}
 
                 {/* Optional Heart Rate & Calories */}
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                      Avg Heart Rate (bpm)
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 138"
-                      value={avgHeartRate}
-                      onChange={e => setAvgHeartRate(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs font-mono-numbers text-zinc-200 focus:outline-none focus:border-blue-500"
-                    />
+                {preferences.showCardioExtraMetrics && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                        Avg Heart Rate (bpm)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 138"
+                        value={avgHeartRate}
+                        onChange={e => setAvgHeartRate(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs font-mono-numbers text-zinc-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                        Calories Burned (kcal)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 380"
+                        value={calories}
+                        onChange={e => setCalories(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs font-mono-numbers text-zinc-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                      Calories Burned (kcal)
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 380"
-                      value={calories}
-                      onChange={e => setCalories(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs font-mono-numbers text-zinc-200 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
+                )}
 
                 {/* Zone 2 Explanation Tip */}
-                {isZone2 && (
+                {preferences.showZone2 && isZone2 && (
                   <div className="flex items-start gap-2 p-2 bg-rose-950/20 border border-rose-900/30 rounded-lg text-[11px] text-rose-300/90">
                     <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-rose-400" />
                     <span>

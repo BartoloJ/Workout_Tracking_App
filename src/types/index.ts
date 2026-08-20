@@ -140,3 +140,37 @@ export const CARDIO_ACTIVITIES = [
   { id: 'stairmaster', name: 'Stairmaster', icon: 'Flame', defaultDistance: 1.0, defaultDuration: 20 },
   { id: 'hiit', name: 'HIIT / Circuit', icon: 'Zap', defaultDistance: 0, defaultDuration: 30 },
 ];
+
+export interface UserPreferences {
+  // Feature Toggles
+  showZone2: boolean; // if false, removes all Zone 2 tracking, filters, badges, and counters
+  showStrengthVolume: boolean; // if false, removes strength volume (lbs) stats, counters, and metrics
+  showHeatmap: boolean; // if false, hides the activity calendar heatmap
+  showStatsBar: boolean; // if false, hides the top stats summary bar
+  showStreakStats: boolean; // if false, hides streak day counter card
+  showIntensityScore: boolean; // if false, hides L1-L4 intensity badges
+  showDuration: boolean; // if false, hides workout duration minutes
+  showCardioExtraMetrics: boolean; // if false, hides heart rate (bpm) and calories
+  showCardioDistance: boolean; // if false, hides miles distance requirement
+  showWorkoutNotes: boolean; // if false, hides notes previews
+  showFloatingRestTimer: boolean; // if false, hides the mini floating rest timer widget
+  compactFeedView: boolean; // if true, renders tight condensed feed rows
+}
+
+export const DEFAULT_USER_PREFERENCES: UserPreferences = {
+  showZone2: true,
+  showStrengthVolume: true,
+  showHeatmap: true,
+  showStatsBar: true,
+  showStreakStats: true,
+  showIntensityScore: true,
+  showDuration: true,
+  showCardioExtraMetrics: true,
+  showCardioDistance: true,
+  showWorkoutNotes: true,
+  showFloatingRestTimer: true,
+  compactFeedView: false,
+};
+
+export type PresetTheme = 'full' | 'ultra_minimal' | 'strength_only' | 'cardio_only';
+

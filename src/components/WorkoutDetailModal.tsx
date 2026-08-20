@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { WorkoutWithDetails } from '../types';
 import { deleteWorkoutWithDetails } from '../db';
+import { usePreferences } from '../contexts/PreferencesContext';
 
 interface WorkoutDetailModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
   onAddAnother,
   onDeleted
 }) => {
+  const { preferences } = usePreferences();
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   if (!isOpen) return null;
@@ -166,14 +168,16 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
 
                 {/* Session Metrics Bar */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                  <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl">
-                    <span className="text-zinc-500 block text-[10px] font-bold uppercase">Duration</span>
-                    <span className="font-mono-numbers font-bold text-zinc-200">
-                      {workout.duration_mins ? `${workout.duration_mins} mins` : '—'}
-                    </span>
-                  </div>
+                  {preferences.showDuration && (
+                    <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl">
+                      <span className="text-zinc-500 block text-[10px] font-bold uppercase">Duration</span>
+                      <span className="font-mono-numbers font-bold text-zinc-200">
+                        {workout.duration_mins ? `${workout.duration_mins} mins` : '—'}
+                      </span>
+                    </div>
+                  )}
 
-                  {exercises.length > 0 && (
+                  {preferences.showStrengthVolume && exercises.length > 0 && (
                     <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl">
                       <span className="text-zinc-500 block text-[10px] font-bold uppercase">Total Lifted</span>
                       <span className="font-mono-numbers font-bold text-emerald-400">
@@ -184,14 +188,15 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
 
                   {cardio && (
                     <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl">
-                      <span className="text-zinc-500 block text-[10px] font-bold uppercase">Cardio Distance</span>
+                      <span className="text-zinc-500 block text-[10px] font-bold uppercase">Cardio</span>
                       <span className="font-mono-numbers font-bold text-blue-400">
-                        {cardio.distance_miles} mi ({cardio.duration_mins}m)
+                        {preferences.showCardioDistance && cardio.distance_miles ? `${cardio.distance_miles} mi ` : ''}
+                        {cardio.duration_mins ? `(${cardio.duration_mins}m)` : ''}
                       </span>
                     </div>
                   )}
 
-                  {cardio?.zone2 && (
+                  {preferences.showZone2 && cardio?.zone2 && (
                     <div className="p-3 bg-rose-950/20 border border-rose-900/40 rounded-xl">
                       <span className="text-rose-400 block text-[10px] font-bold uppercase flex items-center gap-1">
                         <Heart className="w-2.5 h-2.5 fill-rose-400" />
@@ -254,7 +259,7 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
                         <Footprints className="w-3.5 h-3.5 text-blue-400" />
                         {cardio.activity_type}
                       </span>
-                      {cardio.zone2 && (
+                      {preferences.showZone2 && cardio.zone2 && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800 flex items-center gap-1">
                           <Heart className="w-2.5 h-2.5 fill-rose-400" />
                           Zone 2 Easy Pace
@@ -263,10 +268,12 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-4 text-zinc-300 font-mono-numbers pt-1">
-                      <span><strong>{cardio.distance_miles}</strong> miles</span>
-                      <span className="text-zinc-600">•</span>
+                      {preferences.showCardioDistance && (
+                        <span><strong>{cardio.distance_miles}</strong> miles</span>
+                      )}
+                      {preferences.showCardioDistance && <span className="text-zinc-600">•</span>}
                       <span><strong>{cardio.duration_mins}</strong> mins</span>
-                      {cardio.avg_hr && (
+                      {preferences.showCardioExtraMetrics && cardio.avg_hr && (
                         <>
                           <span className="text-zinc-600">•</span>
                           <span><strong>{cardio.avg_hr}</strong> bpm</span>
@@ -277,7 +284,7 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
                 )}
 
                 {/* Notes */}
-                {workout.notes && (
+                {preferences.showWorkoutNotes && workout.notes && (
                   <div className="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800 text-xs text-zinc-300 italic">
                     "{workout.notes}"
                   </div>

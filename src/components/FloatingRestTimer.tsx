@@ -12,8 +12,10 @@ import {
   VolumeX
 } from 'lucide-react';
 import { useRestTimer } from '../contexts/RestTimerContext';
+import { usePreferences } from '../contexts/PreferencesContext';
 
 export const FloatingRestTimer: React.FC = () => {
+  const { preferences } = usePreferences();
   const {
     remainingSeconds,
     totalSeconds,
@@ -28,6 +30,11 @@ export const FloatingRestTimer: React.FC = () => {
     openTimer,
     pauseTimer
   } = useRestTimer();
+
+  // If floating timer is disabled in preferences, don't show it
+  if (!preferences.showFloatingRestTimer) {
+    return null;
+  }
 
   // Only show floating mini-dock when active or when paused with time remaining
   if (!isActive && remainingSeconds === totalSeconds && remainingSeconds === 90) {
