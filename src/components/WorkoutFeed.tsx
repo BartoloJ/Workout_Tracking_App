@@ -187,7 +187,7 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
                       {exercises.length > 0 && cardio && <span className="text-zinc-600">•</span>}
                       {cardio && (
                         <span className="text-blue-300 capitalize font-medium">
-                          {cardio.activity_type} {preferences.showCardioDistance ? `${cardio.distance_miles}mi ` : ''}({cardio.duration_mins}m)
+                          {cardio.activity_type} {preferences.showCardioDistance ? `${cardio.distance_miles}mi ` : ''}{cardio.speed_mph ? `• ${cardio.speed_mph}mph ` : ''}({cardio.duration_mins}m)
                         </span>
                       )}
                       {preferences.showWorkoutNotes && workout.notes && !cardio && exercises.length === 0 && (

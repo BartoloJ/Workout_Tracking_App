@@ -267,16 +267,34 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
                       )}
                     </div>
 
-                    <div className="flex items-center gap-4 text-zinc-300 font-mono-numbers pt-1">
+                    <div className="flex flex-wrap items-center gap-3 text-zinc-300 font-mono-numbers pt-1">
                       {preferences.showCardioDistance && (
-                        <span><strong>{cardio.distance_miles}</strong> miles</span>
+                        <span><strong>{cardio.distance_miles}</strong> mi</span>
                       )}
-                      {preferences.showCardioDistance && <span className="text-zinc-600">•</span>}
-                      <span><strong>{cardio.duration_mins}</strong> mins</span>
+                      {cardio.speed_mph && (
+                        <>
+                          <span className="text-zinc-600">•</span>
+                          <span className="text-amber-300 font-semibold"><strong>{cardio.speed_mph}</strong> mph</span>
+                        </>
+                      )}
+                      {cardio.pace_per_mile && (
+                        <>
+                          <span className="text-zinc-600">•</span>
+                          <span className="text-blue-300"><strong>{cardio.pace_per_mile}</strong></span>
+                        </>
+                      )}
+                      <span className="text-zinc-600">•</span>
+                      <span><strong>{cardio.duration_mins}</strong> min</span>
                       {preferences.showCardioExtraMetrics && cardio.avg_hr && (
                         <>
                           <span className="text-zinc-600">•</span>
                           <span><strong>{cardio.avg_hr}</strong> bpm</span>
+                        </>
+                      )}
+                      {preferences.showCardioExtraMetrics && cardio.calories && (
+                        <>
+                          <span className="text-zinc-600">•</span>
+                          <span><strong>{cardio.calories}</strong> kcal</span>
                         </>
                       )}
                     </div>

@@ -90,7 +90,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   const [date, setDate] = useState<string>(initialDate || todayStr);
   const [workoutType, setWorkoutType] = useState<WorkoutType>('hybrid');
   const [intensityScore, setIntensityScore] = useState<number>(3);
-  const [durationMins, setDurationMins] = useState<number>(45);
+  const [durationMins, setDurationMins] = useState<string>('45');
   const [notes, setNotes] = useState<string>('');
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
@@ -106,10 +106,11 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   const [customDefaultWeight, setCustomDefaultWeight] = useState<number>(50);
   const [customDefaultReps, setCustomDefaultReps] = useState<number>(10);
 
-  // Cardio state
+  // Cardio state (supports fractional decimal minutes like 7.5, distance, and direct speed in MPH)
   const [cardioActivity, setCardioActivity] = useState<string>('running');
-  const [cardioDurationMins, setCardioDurationMins] = useState<number>(30);
-  const [cardioDistanceMiles, setCardioDistanceMiles] = useState<number>(3.1);
+  const [cardioDurationStr, setCardioDurationStr] = useState<string>('20');
+  const [cardioDistanceStr, setCardioDistanceStr] = useState<string>('2.5');
+  const [cardioSpeedStr, setCardioSpeedStr] = useState<string>('7.5');
   const [isZone2, setIsZone2] = useState<boolean>(true);
   const [avgHeartRate, setAvgHeartRate] = useState<string>('138');
   const [calories, setCalories] = useState<string>('350');
@@ -186,7 +187,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
         setDate(editWorkoutData.workout.date);
         setWorkoutType(editWorkoutData.workout.type);
         setIntensityScore(editWorkoutData.workout.intensity_score || 3);
-        setDurationMins(editWorkoutData.workout.duration_mins || 45);
+        setDurationMins(String(editWorkoutData.workout.duration_mins || 45));
         setNotes(editWorkoutData.workout.notes || '');
 
         setExercises(
@@ -199,16 +200,22 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
         );
 
         if (editWorkoutData.cardio) {
-          setCardioActivity(editWorkoutData.cardio.activity_type || 'running');
-          setCardioDurationMins(editWorkoutData.cardio.duration_mins || 30);
-          setCardioDistanceMiles(editWorkoutData.cardio.distance_miles || 0);
-          setIsZone2(editWorkoutData.cardio.zone2 ?? true);
-          setAvgHeartRate(editWorkoutData.cardio.avg_hr ? String(editWorkoutData.cardio.avg_hr) : '');
-          setCalories(editWorkoutData.cardio.calories ? String(editWorkoutData.cardio.calories) : '');
-          setCardioNotes(editWorkoutData.cardio.notes || '');
+          const c = editWorkoutData.cardio;
+          setCardioActivity(c.activity_type || 'running');
+          const dur = c.duration_mins || 30;
+          const dist = c.distance_miles || 0;
+          const spd = c.speed_mph || (dist > 0 && dur > 0 ? Number((dist / (dur / 60)).toFixed(2)) : 6.0);
+          setCardioDurationStr(String(dur));
+          setCardioDistanceStr(String(dist));
+          setCardioSpeedStr(String(spd));
+          setIsZone2(c.zone2 ?? true);
+          setAvgHeartRate(c.avg_hr ? String(c.avg_hr) : '');
+          setCalories(c.calories ? String(c.calories) : '');
+          setCardioNotes(c.notes || '');
         } else {
-          setCardioDurationMins(30);
-          setCardioDistanceMiles(3.1);
+          setCardioDurationStr('30');
+          setCardioDistanceStr('3.1');
+          setCardioSpeedStr('6.2');
           setIsZone2(true);
         }
       } else {
@@ -216,7 +223,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
         setDate(initialDate || todayStr);
         setWorkoutType('hybrid');
         setIntensityScore(3);
-        setDurationMins(45);
+        setDurationMins('45');
         setNotes('');
         setExercises([
           {
@@ -230,8 +237,9 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
           }
         ]);
         setCardioActivity('running');
-        setCardioDurationMins(20);
-        setCardioDistanceMiles(2.5);
+        setCardioDurationStr('20');
+        setCardioDistanceStr('2.5');
+        setCardioSpeedStr('7.5');
         setIsZone2(true);
         setAvgHeartRate('135');
         setCalories('220');
@@ -432,14 +440,85 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
     });
   };
 
-  // Pace Calculator
-  const calculatePace = (distance: number, duration: number) => {
-    if (!distance || distance <= 0 || !duration || duration <= 0) return null;
+  // Smart number formatting helper (e.g. 7.5, 8, 3.1)
+  const formatSmartNumber = (val: number, maxDecimals = 2): string => {
+    if (isNaN(val) || !isFinite(val) || val <= 0) return '';
+    const rounded = Number(val.toFixed(maxDecimals));
+    return String(rounded);
+  };
+
+  // Cardio Handlers for Bi-Directional Synchronized Distance, Speed (MPH), and Duration (mins)
+  const handleCardioDistanceChange = (rawVal: string) => {
+    setCardioDistanceStr(rawVal);
+    const dist = parseFloat(rawVal);
+    const speed = parseFloat(cardioSpeedStr);
+    const dur = parseFloat(cardioDurationStr);
+
+    if (!isNaN(dist) && dist > 0) {
+      if (!isNaN(speed) && speed > 0) {
+        // duration (mins) = (distance / speed) * 60
+        const calculatedDur = (dist / speed) * 60;
+        setCardioDurationStr(formatSmartNumber(calculatedDur, 2));
+      } else if (!isNaN(dur) && dur > 0) {
+        // speed (mph) = distance / (duration / 60)
+        const calculatedSpeed = dist / (dur / 60);
+        setCardioSpeedStr(formatSmartNumber(calculatedSpeed, 2));
+      }
+    }
+  };
+
+  const handleCardioSpeedChange = (rawVal: string) => {
+    setCardioSpeedStr(rawVal);
+    const speed = parseFloat(rawVal);
+    const dist = parseFloat(cardioDistanceStr);
+    const dur = parseFloat(cardioDurationStr);
+
+    if (!isNaN(speed) && speed > 0) {
+      if (!isNaN(dist) && dist > 0) {
+        // duration (mins) = (distance / speed) * 60
+        const calculatedDur = (dist / speed) * 60;
+        setCardioDurationStr(formatSmartNumber(calculatedDur, 2));
+      } else if (!isNaN(dur) && dur > 0) {
+        // distance (miles) = speed * (duration / 60)
+        const calculatedDist = speed * (dur / 60);
+        setCardioDistanceStr(formatSmartNumber(calculatedDist, 2));
+      }
+    }
+  };
+
+  const handleCardioDurationChange = (rawVal: string) => {
+    setCardioDurationStr(rawVal);
+    const dur = parseFloat(rawVal);
+    const dist = parseFloat(cardioDistanceStr);
+    const speed = parseFloat(cardioSpeedStr);
+
+    if (!isNaN(dur) && dur > 0) {
+      if (!isNaN(dist) && dist > 0) {
+        // speed (mph) = distance / (duration / 60)
+        const calculatedSpeed = dist / (dur / 60);
+        setCardioSpeedStr(formatSmartNumber(calculatedSpeed, 2));
+      } else if (!isNaN(speed) && speed > 0) {
+        // distance (miles) = speed * (duration / 60)
+        const calculatedDist = speed * (dur / 60);
+        setCardioDistanceStr(formatSmartNumber(calculatedDist, 2));
+      }
+    }
+  };
+
+  // Pace Calculator supporting fractional minutes (e.g. 7.5 min)
+  const calculatePace = (distanceStr: string, durationStr: string) => {
+    const distance = parseFloat(distanceStr);
+    const duration = parseFloat(durationStr);
+    if (isNaN(distance) || distance <= 0 || isNaN(duration) || duration <= 0) return null;
     const paceMinutes = duration / distance;
-    const minutes = Math.floor(paceMinutes);
-    const seconds = Math.round((paceMinutes - minutes) * 60);
+    let minutes = Math.floor(paceMinutes);
+    let seconds = Math.round((paceMinutes - minutes) * 60);
+    if (seconds >= 60) {
+      minutes += 1;
+      seconds = 0;
+    }
     const formattedSeconds = seconds < 10 ? `0${seconds}` : seconds;
-    const mph = (distance / (duration / 60)).toFixed(1);
+    const mph = (distance / (duration / 60)).toFixed(2).replace(/\.?0+$/, '');
 
     return {
       pacePerMile: `${minutes}:${formattedSeconds} /mi`,
@@ -447,7 +526,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
     };
   };
 
-  const calculatedPace = calculatePace(cardioDistanceMiles, cardioDurationMins);
+  const calculatedPace = calculatePace(cardioDistanceStr, cardioDurationStr);
 
   // Form Save Handler
   const handleSave = async (e: React.FormEvent) => {
@@ -459,13 +538,20 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
       const isStrengthIncluded = workoutType === 'strength' || workoutType === 'hybrid';
       const isCardioIncluded = workoutType === 'cardio' || workoutType === 'hybrid';
 
+      const parsedWorkoutDuration = parseFloat(durationMins);
+      const parsedCardioDuration = parseFloat(cardioDurationStr);
+      const parsedCardioDistance = parseFloat(cardioDistanceStr);
+      const parsedCardioSpeed = parseFloat(cardioSpeedStr);
+
       const workoutPayload: Omit<Workout, 'id'> & { id?: number } = {
         id: editWorkoutData?.workout.id,
         sync_id: editWorkoutData?.workout.sync_id,
         date,
         type: workoutType,
         intensity_score: intensityScore,
-        duration_mins: Number(durationMins) || 45,
+        duration_mins: !isNaN(parsedWorkoutDuration) && parsedWorkoutDuration > 0
+          ? parsedWorkoutDuration
+          : (!isNaN(parsedCardioDuration) && parsedCardioDuration > 0 ? parsedCardioDuration : 45),
         notes,
         created_at: editWorkoutData?.workout.created_at
       };
@@ -474,8 +560,14 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
       const cardioPayload = isCardioIncluded
         ? {
             activity_type: cardioActivity,
-            duration_mins: Number(cardioDurationMins) || 0,
-            distance_miles: Number(cardioDistanceMiles) || 0,
+            duration_mins: !isNaN(parsedCardioDuration) ? parsedCardioDuration : 0,
+            distance_miles: !isNaN(parsedCardioDistance) ? parsedCardioDistance : 0,
+            speed_mph: !isNaN(parsedCardioSpeed) && parsedCardioSpeed > 0
+              ? parsedCardioSpeed
+              : (parsedCardioDistance > 0 && parsedCardioDuration > 0
+                  ? Number((parsedCardioDistance / (parsedCardioDuration / 60)).toFixed(2))
+                  : undefined),
+            pace_per_mile: calculatedPace?.pacePerMile,
             zone2: preferences.showZone2 ? isZone2 : false,
             avg_hr: avgHeartRate ? Number(avgHeartRate) : undefined,
             calories: calories ? Number(calories) : undefined,
@@ -661,10 +753,12 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                   <input
                     id="workout-duration-input"
                     type="number"
-                    min="1"
+                    step="any"
+                    min="0.1"
                     max="600"
+                    placeholder="e.g. 45 or 7.5"
                     value={durationMins}
-                    onChange={e => setDurationMins(Number(e.target.value))}
+                    onChange={e => setDurationMins(e.target.value)}
                     className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-100 font-mono-numbers focus:outline-none focus:border-emerald-500"
                   />
                   <span className="absolute right-3 top-2 text-xs text-zinc-500 pointer-events-none">
@@ -1293,8 +1387,15 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                         type="button"
                         onClick={() => {
                           setCardioActivity(act.id);
-                          if (!cardioDistanceMiles) setCardioDistanceMiles(act.defaultDistance);
-                          if (!cardioDurationMins) setCardioDurationMins(act.defaultDuration);
+                          if (!cardioDistanceStr || cardioDistanceStr === '0') {
+                            setCardioDistanceStr(String(act.defaultDistance));
+                          }
+                          if (!cardioDurationStr || cardioDurationStr === '0') {
+                            setCardioDurationStr(String(act.defaultDuration));
+                          }
+                          if (act.defaultSpeed && (!cardioSpeedStr || cardioSpeedStr === '0')) {
+                            setCardioSpeedStr(String(act.defaultSpeed));
+                          }
                         }}
                         className={`p-2 rounded-lg border text-xs font-semibold transition-all flex items-center gap-2 ${
                           cardioActivity === act.id
@@ -1309,63 +1410,178 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                   </div>
                 </div>
 
-                {/* Distance & Duration Inputs */}
-                <div className={`grid ${preferences.showCardioDistance ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3`}>
+                {/* Main Cardio Inputs: Distance, Speed (MPH), & Duration (mins) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Distance Input */}
                   {preferences.showCardioDistance && (
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-400 mb-1">
-                        Distance (miles)
-                      </label>
+                    <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-semibold text-zinc-300">
+                          Distance
+                        </label>
+                        <span className="text-[10px] text-zinc-500 uppercase font-mono">miles</span>
+                      </div>
                       <div className="relative">
                         <input
                           id="cardio-distance-input"
                           type="number"
-                          step="0.01"
+                          step="any"
                           min="0"
-                          value={cardioDistanceMiles}
-                          onChange={e => setCardioDistanceMiles(Number(e.target.value))}
-                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-100 font-mono-numbers font-bold focus:outline-none focus:border-blue-500"
-                          placeholder="e.g. 5.0"
+                          value={cardioDistanceStr}
+                          onChange={e => handleCardioDistanceChange(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-lg text-sm text-zinc-100 font-mono-numbers font-bold focus:outline-none focus:border-blue-500"
+                          placeholder="e.g. 3.1"
                         />
-                        <span className="absolute right-3 top-2 text-xs text-zinc-500 font-mono">
+                        <span className="absolute right-3 top-2.5 text-xs text-zinc-500 font-mono pointer-events-none">
                           mi
                         </span>
+                      </div>
+                      {/* Distance quick presets */}
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {[
+                          { label: '1 mi', val: '1' },
+                          { label: '2 mi', val: '2' },
+                          { label: '3.1 mi', val: '3.1' },
+                          { label: '5 mi', val: '5' },
+                          { label: '6.2 mi', val: '6.2' },
+                        ].map(preset => (
+                          <button
+                            key={preset.val}
+                            type="button"
+                            onClick={() => handleCardioDistanceChange(preset.val)}
+                            className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                              cardioDistanceStr === preset.val
+                                ? 'bg-blue-900/50 border-blue-500 text-blue-300 font-semibold'
+                                : 'bg-zinc-800/60 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
 
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1">
-                      Cardio Duration (mins)
-                    </label>
+                  {/* Speed (MPH) Input */}
+                  <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-zinc-300">
+                        Speed (MPH)
+                      </label>
+                      <span className="text-[10px] text-zinc-500 uppercase font-mono">miles/hr</span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        id="cardio-speed-input"
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={cardioSpeedStr}
+                        onChange={e => handleCardioSpeedChange(e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-lg text-sm text-amber-300 font-mono-numbers font-bold focus:outline-none focus:border-amber-500"
+                        placeholder="e.g. 7.5 or 8.0"
+                      />
+                      <span className="absolute right-3 top-2.5 text-xs text-amber-500/70 font-mono pointer-events-none">
+                        mph
+                      </span>
+                    </div>
+                    {/* Speed quick presets */}
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {[
+                        { label: '5.0', val: '5' },
+                        { label: '6.0', val: '6' },
+                        { label: '7.0', val: '7' },
+                        { label: '7.5', val: '7.5' },
+                        { label: '8.0', val: '8' },
+                        { label: '9.0', val: '9' },
+                        { label: '10.0', val: '10' },
+                      ].map(preset => (
+                        <button
+                          key={preset.val}
+                          type="button"
+                          onClick={() => handleCardioSpeedChange(preset.val)}
+                          className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                            cardioSpeedStr === preset.val
+                              ? 'bg-amber-950/70 border-amber-500 text-amber-300 font-semibold'
+                              : 'bg-zinc-800/60 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Duration (mins) Input (supports fractions like 7.5) */}
+                  <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-zinc-300">
+                        Cardio Time
+                      </label>
+                      <span className="text-[10px] text-zinc-500 uppercase font-mono">minutes</span>
+                    </div>
                     <div className="relative">
                       <input
                         id="cardio-duration-input"
                         type="number"
-                        min="1"
-                        value={cardioDurationMins}
-                        onChange={e => setCardioDurationMins(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-100 font-mono-numbers font-bold focus:outline-none focus:border-blue-500"
-                        placeholder="e.g. 45"
+                        step="any"
+                        min="0.1"
+                        value={cardioDurationStr}
+                        onChange={e => handleCardioDurationChange(e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-lg text-sm text-emerald-300 font-mono-numbers font-bold focus:outline-none focus:border-emerald-500"
+                        placeholder="e.g. 7.5 or 30"
                       />
-                      <span className="absolute right-3 top-2 text-xs text-zinc-500 font-mono">
+                      <span className="absolute right-3 top-2.5 text-xs text-emerald-500/70 font-mono pointer-events-none">
                         min
                       </span>
+                    </div>
+                    {/* Duration quick presets including fractional minutes */}
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {[
+                        { label: '5m', val: '5' },
+                        { label: '7.5m', val: '7.5' },
+                        { label: '10m', val: '10' },
+                        { label: '15m', val: '15' },
+                        { label: '20m', val: '20' },
+                        { label: '30m', val: '30' },
+                        { label: '45m', val: '45' },
+                      ].map(preset => (
+                        <button
+                          key={preset.val}
+                          type="button"
+                          onClick={() => handleCardioDurationChange(preset.val)}
+                          className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                            cardioDurationStr === preset.val
+                              ? 'bg-emerald-950/70 border-emerald-500 text-emerald-300 font-semibold'
+                              : 'bg-zinc-800/60 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
 
-                {/* Real-time Pace & Speed Indicator */}
-                {preferences.showCardioDistance && calculatedPace && (
-                  <div className="flex items-center justify-between p-2.5 bg-blue-950/30 border border-blue-900/50 rounded-lg text-xs">
-                    <span className="text-blue-300 font-medium flex items-center gap-1.5">
-                      <Timer className="w-3.5 h-3.5" />
-                      Calculated Pace:
-                    </span>
-                    <div className="flex items-center gap-3 font-mono-numbers font-bold text-blue-200">
-                      <span>{calculatedPace.pacePerMile}</span>
-                      <span className="text-blue-500">•</span>
-                      <span>{calculatedPace.speedMph}</span>
+                {/* Real-time Pace & Speed Indicator Banner */}
+                {calculatedPace && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-gradient-to-r from-blue-950/40 via-emerald-950/30 to-amber-950/40 border border-zinc-800 rounded-lg text-xs">
+                    <div className="flex items-center gap-2 text-zinc-300 font-medium">
+                      <Timer className="w-4 h-4 text-blue-400" />
+                      <span>Live Pace & Speed:</span>
+                    </div>
+                    <div className="flex items-center gap-3 font-mono-numbers font-bold">
+                      <span className="px-2 py-0.5 bg-blue-900/60 text-blue-200 rounded border border-blue-700/60">
+                        {calculatedPace.pacePerMile}
+                      </span>
+                      <span className="px-2 py-0.5 bg-amber-900/60 text-amber-200 rounded border border-amber-700/60">
+                        {calculatedPace.speedMph}
+                      </span>
+                      {cardioDistanceStr && cardioDurationStr && (
+                        <span className="text-zinc-400 font-normal hidden sm:inline">
+                          ({cardioDistanceStr} mi in {cardioDurationStr} min)
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}

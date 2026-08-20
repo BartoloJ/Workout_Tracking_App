@@ -37,6 +37,8 @@ export interface CardioLog {
   activity_type: string; // "running", "cycling", "rowing", "swimming", "walking", etc.
   duration_mins: number;
   distance_miles: number;
+  speed_mph?: number;
+  pace_per_mile?: string;
   zone2: boolean;
   avg_hr?: number;
   calories?: number;
@@ -132,13 +134,13 @@ export const PREDEFINED_EXERCISES: PredefinedExercise[] = [
 ];
 
 export const CARDIO_ACTIVITIES = [
-  { id: 'running', name: 'Running', icon: 'Footprints', defaultDistance: 3.1, defaultDuration: 30 },
-  { id: 'cycling', name: 'Cycling / Bike', icon: 'Bike', defaultDistance: 12.0, defaultDuration: 45 },
-  { id: 'rowing', name: 'Rowing Machine', icon: 'Waves', defaultDistance: 3.1, defaultDuration: 25 },
-  { id: 'swimming', name: 'Swimming', icon: 'Fish', defaultDistance: 1.0, defaultDuration: 35 },
-  { id: 'walking', name: 'Ruck / Incline Walk', icon: 'MapPin', defaultDistance: 2.5, defaultDuration: 40 },
-  { id: 'stairmaster', name: 'Stairmaster', icon: 'Flame', defaultDistance: 1.0, defaultDuration: 20 },
-  { id: 'hiit', name: 'HIIT / Circuit', icon: 'Zap', defaultDistance: 0, defaultDuration: 30 },
+  { id: 'running', name: 'Running', icon: 'Footprints', defaultDistance: 3.1, defaultDuration: 30, defaultSpeed: 6.2 },
+  { id: 'cycling', name: 'Cycling / Bike', icon: 'Bike', defaultDistance: 12.0, defaultDuration: 45, defaultSpeed: 16.0 },
+  { id: 'rowing', name: 'Rowing Machine', icon: 'Waves', defaultDistance: 3.1, defaultDuration: 25, defaultSpeed: 7.4 },
+  { id: 'swimming', name: 'Swimming', icon: 'Fish', defaultDistance: 1.0, defaultDuration: 35, defaultSpeed: 1.7 },
+  { id: 'walking', name: 'Ruck / Incline Walk', icon: 'MapPin', defaultDistance: 2.5, defaultDuration: 40, defaultSpeed: 3.75 },
+  { id: 'stairmaster', name: 'Stairmaster', icon: 'Flame', defaultDistance: 1.0, defaultDuration: 20, defaultSpeed: 3.0 },
+  { id: 'hiit', name: 'HIIT / Circuit', icon: 'Zap', defaultDistance: 1.5, defaultDuration: 15, defaultSpeed: 6.0 },
 ];
 
 export interface UserPreferences {
