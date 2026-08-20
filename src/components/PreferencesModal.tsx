@@ -16,7 +16,8 @@ import {
   EyeOff,
   Activity,
   FileText,
-  Clock
+  Clock,
+  Navigation
 } from 'lucide-react';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { PresetTheme } from '../types';
@@ -282,6 +283,50 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ isOpen, onCl
                   <span
                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       preferences.showCardioDistance ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Live GPS Route Tracking Toggle (Outdoor Run & Cycling) */}
+              <div
+                id="toggle-gps-tracking-row"
+                className={`p-3.5 rounded-xl border transition-all flex items-center justify-between gap-4 ${
+                  preferences.enableGpsTracking
+                    ? 'bg-zinc-900/90 border-zinc-800'
+                    : 'bg-zinc-950/60 border-zinc-800/80'
+                }`}
+              >
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="font-bold text-xs text-zinc-200">
+                      Live GPS Route Tracking (Outdoor Run & Bike)
+                    </span>
+                    {!preferences.enableGpsTracking && (
+                      <span className="text-[10px] font-mono px-2 py-0.2 bg-zinc-800 text-zinc-400 rounded border border-zinc-700">
+                        Completely Disabled
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Enables live outdoor GPS route mapping, live speed (MPH), pace HUD, and GPX route export. Disable completely if troubleshooting or if you only log indoor equipment.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  id="pref-toggle-gps-tracking-btn"
+                  onClick={() => updatePreference('enableGpsTracking', !preferences.enableGpsTracking)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    preferences.enableGpsTracking ? 'bg-emerald-500' : 'bg-zinc-700'
+                  }`}
+                  role="switch"
+                  aria-checked={preferences.enableGpsTracking}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      preferences.enableGpsTracking ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>

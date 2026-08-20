@@ -22,7 +22,9 @@ import {
   VolumeX,
   Maximize2,
   Trophy,
-  Award
+  Award,
+  Navigation,
+  MapPin
 } from 'lucide-react';
 import {
   Workout,
@@ -35,8 +37,11 @@ import {
   CustomExercise,
   PredefinedExercise,
   PREDEFINED_EXERCISES,
-  CARDIO_ACTIVITIES
+  CARDIO_ACTIVITIES,
+  GPSPoint
 } from '../types';
+import { GpsTrackerModal } from './GpsTrackerModal';
+import { RouteMap } from './RouteMap';
 import {
   saveWorkoutWithDetails,
   getAllCustomExercises,
@@ -115,6 +120,10 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   const [avgHeartRate, setAvgHeartRate] = useState<string>('138');
   const [calories, setCalories] = useState<string>('350');
   const [cardioNotes, setCardioNotes] = useState<string>('');
+  const [routePoints, setRoutePoints] = useState<GPSPoint[] | undefined>(undefined);
+  const [isGpsTracked, setIsGpsTracked] = useState<boolean>(false);
+  const [elevationGainFt, setElevationGainFt] = useState<number | undefined>(undefined);
+  const [isGpsTrackerOpen, setIsGpsTrackerOpen] = useState<boolean>(false);
 
   // Load custom exercises on open
   useEffect(() => {
@@ -212,11 +221,17 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
           setAvgHeartRate(c.avg_hr ? String(c.avg_hr) : '');
           setCalories(c.calories ? String(c.calories) : '');
           setCardioNotes(c.notes || '');
+          setRoutePoints(c.route_points);
+          setIsGpsTracked(c.is_gps_tracked || (c.route_points && c.route_points.length > 0) || false);
+          setElevationGainFt(c.elevation_gain_ft);
         } else {
           setCardioDurationStr('30');
           setCardioDistanceStr('3.1');
           setCardioSpeedStr('6.2');
           setIsZone2(true);
+          setRoutePoints(undefined);
+          setIsGpsTracked(false);
+          setElevationGainFt(undefined);
         }
       } else {
         // Fresh state
@@ -244,6 +259,9 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
         setAvgHeartRate('135');
         setCalories('220');
         setCardioNotes('');
+        setRoutePoints(undefined);
+        setIsGpsTracked(false);
+        setElevationGainFt(undefined);
       }
       setShowAddExercisePicker(false);
       setExerciseSearch('');
@@ -571,7 +589,10 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
             zone2: preferences.showZone2 ? isZone2 : false,
             avg_hr: avgHeartRate ? Number(avgHeartRate) : undefined,
             calories: calories ? Number(calories) : undefined,
-            notes: cardioNotes
+            notes: cardioNotes,
+            route_points: routePoints,
+            is_gps_tracked: isGpsTracked || (routePoints && routePoints.length > 0) || false,
+            elevation_gain_ft: elevationGainFt
           }
         : null;
 
@@ -1375,11 +1396,24 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
 
               {/* Cardio Fields Grid */}
               <div className="bg-zinc-950/60 p-4 rounded-xl border border-zinc-800 space-y-4">
-                {/* Activity Selector */}
+                {/* Activity Selector & Live GPS Tracker Launcher */}
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-2">
-                    Cardio Activity Type
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-zinc-400">
+                      Cardio Activity Type
+                    </label>
+                    {preferences.enableGpsTracking && (
+                      <button
+                        type="button"
+                        id="open-gps-tracker-modal-btn"
+                        onClick={() => setIsGpsTrackerOpen(true)}
+                        className="px-2.5 py-1 bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-700/60 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                      >
+                        <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Start Live GPS Route</span>
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {CARDIO_ACTIVITIES.map(act => (
                       <button
@@ -1409,6 +1443,51 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                     ))}
                   </div>
                 </div>
+
+                {/* Attached GPS Route Preview Banner (if GPS recorded) */}
+                {routePoints && routePoints.length > 0 && (
+                  <div className="p-3 bg-zinc-900/90 rounded-xl border border-emerald-800/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Navigation className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-emerald-300">
+                          Live GPS Track Attached ({routePoints.length} points)
+                        </span>
+                        {elevationGainFt != null && elevationGainFt > 0 && (
+                          <span className="text-[11px] font-mono text-zinc-400">
+                            +{elevationGainFt} ft climb
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsGpsTrackerOpen(true)}
+                          className="text-[11px] text-zinc-300 hover:text-white underline font-medium"
+                        >
+                          Re-open Tracker
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRoutePoints(undefined);
+                            setIsGpsTracked(false);
+                            setElevationGainFt(undefined);
+                          }}
+                          className="text-[11px] text-rose-400 hover:text-rose-300"
+                        >
+                          Clear Route
+                        </button>
+                      </div>
+                    </div>
+                    <RouteMap
+                      points={routePoints}
+                      interactive={false}
+                      className="h-32 w-full rounded-lg"
+                      theme="dark"
+                    />
+                  </div>
+                )}
 
                 {/* Main Cardio Inputs: Distance, Speed (MPH), & Duration (mins) */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1666,6 +1745,29 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Embedded Live Outdoor GPS Tracker Modal */}
+      {isGpsTrackerOpen && (
+        <GpsTrackerModal
+          isOpen={isGpsTrackerOpen}
+          onClose={() => setIsGpsTrackerOpen(false)}
+          onFinishWorkout={data => {
+            setCardioActivity(data.activityType);
+            setCardioDurationStr(String(data.durationMins));
+            setCardioDistanceStr(String(data.distanceMiles));
+            setCardioSpeedStr(String(data.speedMph));
+            setRoutePoints(data.routePoints);
+            setIsGpsTracked(true);
+            setElevationGainFt(data.elevationGainFt);
+            if (data.zone2 !== undefined && preferences.showZone2) {
+              setIsZone2(data.zone2);
+            }
+            if (workoutType === 'strength') {
+              setWorkoutType('hybrid');
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -31,6 +31,15 @@ export interface ExerciseLog {
   notes?: string;
 }
 
+export interface GPSPoint {
+  lat: number;
+  lng: number;
+  altitude?: number | null;
+  speed_mph?: number | null;
+  timestamp: number;
+  accuracy?: number | null;
+}
+
 export interface CardioLog {
   id?: number;
   workout_id: number;
@@ -43,6 +52,9 @@ export interface CardioLog {
   avg_hr?: number;
   calories?: number;
   notes?: string;
+  route_points?: GPSPoint[];
+  is_gps_tracked?: boolean;
+  elevation_gain_ft?: number;
 }
 
 export interface WorkoutWithDetails {
@@ -157,6 +169,7 @@ export interface UserPreferences {
   showWorkoutNotes: boolean; // if false, hides notes previews
   showFloatingRestTimer: boolean; // if false, hides the mini floating rest timer widget
   compactFeedView: boolean; // if true, renders tight condensed feed rows
+  enableGpsTracking: boolean; // if false, completely disables GPS mode & hides all GPS tracking buttons/HUD for troubleshooting
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -172,6 +185,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   showWorkoutNotes: true,
   showFloatingRestTimer: true,
   compactFeedView: false,
+  enableGpsTracking: true,
 };
 
 export type PresetTheme = 'full' | 'ultra_minimal' | 'strength_only' | 'cardio_only';

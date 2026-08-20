@@ -11,11 +11,15 @@ import {
   Calendar,
   Clock,
   Zap,
-  CheckCircle2
+  CheckCircle2,
+  Navigation,
+  Download
 } from 'lucide-react';
 import { WorkoutWithDetails } from '../types';
 import { deleteWorkoutWithDetails } from '../db';
 import { usePreferences } from '../contexts/PreferencesContext';
+import { RouteMap } from './RouteMap';
+import { generateGpxString, downloadGpxFile } from '../utils/gpsMath';
 
 interface WorkoutDetailModalProps {
   isOpen: boolean;
@@ -253,18 +257,47 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
 
                 {/* Cardio Detail */}
                 {cardio && (
-                  <div className="p-3.5 bg-zinc-900 rounded-xl border border-zinc-800 space-y-1.5 text-xs">
+                  <div className="p-3.5 bg-zinc-900 rounded-xl border border-zinc-800 space-y-2 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-zinc-100 flex items-center gap-1.5 capitalize">
-                        <Footprints className="w-3.5 h-3.5 text-blue-400" />
-                        {cardio.activity_type}
-                      </span>
-                      {preferences.showZone2 && cardio.zone2 && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800 flex items-center gap-1">
-                          <Heart className="w-2.5 h-2.5 fill-rose-400" />
-                          Zone 2 Easy Pace
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-zinc-100 flex items-center gap-1.5 capitalize">
+                          <Footprints className="w-3.5 h-3.5 text-blue-400" />
+                          {cardio.activity_type}
                         </span>
-                      )}
+                        {cardio.route_points && cardio.route_points.length > 0 && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/90 text-emerald-300 border border-emerald-800 flex items-center gap-1">
+                            <Navigation className="w-2.5 h-2.5 text-emerald-400" />
+                            GPS Mapped
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {cardio.route_points && cardio.route_points.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const gpx = generateGpxString(
+                                cardio.activity_type,
+                                cardio.route_points!,
+                                workout.created_at || Date.now()
+                              );
+                              downloadGpxFile(`${cardio.activity_type}_route_${workout.date}`, gpx);
+                            }}
+                            className="px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-[11px] font-medium flex items-center gap-1 border border-zinc-700 transition-colors"
+                            title="Export route to standard GPX for Strava / Garmin"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>GPX</span>
+                          </button>
+                        )}
+                        {preferences.showZone2 && cardio.zone2 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800 flex items-center gap-1">
+                            <Heart className="w-2.5 h-2.5 fill-rose-400" />
+                            Zone 2 Easy Pace
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3 text-zinc-300 font-mono-numbers pt-1">
@@ -285,6 +318,12 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
                       )}
                       <span className="text-zinc-600">•</span>
                       <span><strong>{cardio.duration_mins}</strong> min</span>
+                      {cardio.elevation_gain_ft != null && cardio.elevation_gain_ft > 0 && (
+                        <>
+                          <span className="text-zinc-600">•</span>
+                          <span className="text-emerald-400 font-semibold">+{cardio.elevation_gain_ft} ft climb</span>
+                        </>
+                      )}
                       {preferences.showCardioExtraMetrics && cardio.avg_hr && (
                         <>
                           <span className="text-zinc-600">•</span>
@@ -298,6 +337,18 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
                         </>
                       )}
                     </div>
+
+                    {/* Interactive Route Map Thumbnail */}
+                    {cardio.route_points && cardio.route_points.length > 0 && (
+                      <div className="pt-2">
+                        <RouteMap
+                          points={cardio.route_points}
+                          interactive={true}
+                          className="h-44 sm:h-52 w-full rounded-xl"
+                          theme="dark"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 

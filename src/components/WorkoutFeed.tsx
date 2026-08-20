@@ -8,7 +8,8 @@ import {
   Calendar,
   Heart,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Navigation
 } from 'lucide-react';
 import { WorkoutWithDetails, WorkoutType } from '../types';
 import { usePreferences } from '../contexts/PreferencesContext';
@@ -186,8 +187,14 @@ export const WorkoutFeed: React.FC<WorkoutFeedProps> = ({
                       )}
                       {exercises.length > 0 && cardio && <span className="text-zinc-600">•</span>}
                       {cardio && (
-                        <span className="text-blue-300 capitalize font-medium">
+                        <span className="text-blue-300 capitalize font-medium flex items-center gap-1">
                           {cardio.activity_type} {preferences.showCardioDistance ? `${cardio.distance_miles}mi ` : ''}{cardio.speed_mph ? `• ${cardio.speed_mph}mph ` : ''}({cardio.duration_mins}m)
+                          {cardio.route_points && cardio.route_points.length > 0 && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] px-1 py-0.2 bg-emerald-950/80 text-emerald-300 border border-emerald-800/80 rounded font-mono">
+                              <Navigation className="w-2.5 h-2.5 text-emerald-400" />
+                              GPS
+                            </span>
+                          )}
                         </span>
                       )}
                       {preferences.showWorkoutNotes && workout.notes && !cardio && exercises.length === 0 && (

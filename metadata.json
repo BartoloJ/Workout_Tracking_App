@@ -1,6 +1,6 @@
 {
   "name": "Workout Tracker",
   "description": "Offline-first hybrid workout tracker and PWA with GitHub-style consistency calendar, strength & cardio logging, and IndexedDB persistence.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
