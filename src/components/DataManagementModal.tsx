@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Download,
@@ -15,9 +15,10 @@ import {
   CloudDownload,
   LogOut,
   ExternalLink,
-  Settings
+  Settings,
+  ShieldCheck
 } from 'lucide-react';
-import { exportDatabaseJSON, importDatabaseJSON, seedSampleWorkouts, db } from '../db';
+import { exportDatabaseJSON, importDatabaseJSON, seedSampleWorkouts, deduplicateWorkouts, ensureAllWorkoutsHaveSyncIds, db } from '../db';
 import { useGoogleAuth } from '../contexts/GoogleAuthContext';
 import { ExportDataPayload } from '../types';
 
@@ -52,12 +53,19 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isDeduplicating, setIsDeduplicating] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [showOAuthSettings, setShowOAuthSettings] = useState(false);
   const [tempClientId, setTempClientId] = useState(clientId);
   const [clientSavedMsg, setClientSavedMsg] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      ensureAllWorkoutsHaveSyncIds();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -74,17 +82,40 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
   };
 
   const handleCloudRestore = async () => {
-    if (window.confirm('Restore workouts from your Google Drive backup? This will merge them with your current data.')) {
+    if (window.confirm('Restore & sync workouts from your Google Drive backup? Duplicate protection ensures existing workouts will not be duplicated.')) {
       setImportStatus(null);
       setImportError(null);
       clearError();
       try {
-        const count = await restoreNow(false);
-        setImportStatus(`Successfully restored ${count} workouts from Google Drive!`);
+        const res = await restoreNow(false);
+        setImportStatus(
+          `Sync complete! Added ${res.newInsertedCount} new workouts, refreshed ${res.updatedOrMergedCount} workouts (0 duplicates created).`
+        );
         onDataChanged();
       } catch (err: any) {
         setImportError(`Cloud restore failed: ${err.message}`);
       }
+    }
+  };
+
+  // Run Deduplication Cleanup
+  const handleDeduplicate = async () => {
+    setIsDeduplicating(true);
+    setImportStatus(null);
+    setImportError(null);
+    try {
+      const res = await deduplicateWorkouts();
+      if (res.removedCount > 0) {
+        setImportStatus(`Deduplication complete: Removed ${res.removedCount} duplicate workout entries. Kept ${res.keptCount} clean workouts.`);
+      } else {
+        setImportStatus(`Protected & Clean: All ${res.keptCount} workouts are unique with zero duplicates.`);
+      }
+      onDataChanged();
+    } catch (err: any) {
+      console.error('Deduplication error:', err);
+      setImportError(`Deduplication failed: ${err.message}`);
+    } finally {
+      setIsDeduplicating(false);
     }
   };
 
@@ -136,7 +167,9 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
       }
 
       const res = await importDatabaseJSON(data, false);
-      setImportStatus(`Successfully imported & merged ${res.importedCount} workouts!`);
+      setImportStatus(
+        `Imported: ${res.newInsertedCount} new workouts added, ${res.updatedOrMergedCount} merged into existing (0 duplicates).`
+      );
       onDataChanged();
     } catch (err: any) {
       console.error('Import failed:', err);
@@ -442,6 +475,33 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
             >
               <Upload className="w-4 h-4" />
               <span>{isImporting ? 'Reading & Validating JSON...' : 'Select File to Restore'}</span>
+            </button>
+          </div>
+
+          {/* Section: Duplicate Workout Protection */}
+          <div className="p-5 bg-zinc-800/40 rounded-2xl border border-zinc-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-teal-400" />
+                <h3 className="font-bold text-sm text-zinc-100">
+                  Duplicate Workout Protection
+                </h3>
+              </div>
+              <span className="text-[10px] uppercase font-mono tracking-wider px-2 py-0.5 bg-teal-950/60 text-teal-300 border border-teal-800/60 rounded-md font-bold">
+                Active
+              </span>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed font-medium">
+              Every workout session is assigned a unique persistent identifier. If duplicate workouts already exist from past imports, run the cleaner below to merge and keep only unique records.
+            </p>
+            <button
+              id="deduplicate-workouts-btn"
+              onClick={handleDeduplicate}
+              disabled={isDeduplicating}
+              className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-teal-300 font-bold rounded-xl text-xs transition-colors touch-press cursor-pointer"
+            >
+              <ShieldCheck className={`w-4 h-4 ${isDeduplicating ? 'animate-pulse' : ''}`} />
+              <span>{isDeduplicating ? 'Scanning & Deduplicating...' : 'Scan & Clean Up Duplicates'}</span>
             </button>
           </div>
 

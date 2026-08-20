@@ -76,7 +76,13 @@ export async function uploadBackupToDrive(accessToken: string): Promise<DriveBac
   return result as DriveBackupInfo;
 }
 
-export async function restoreBackupFromDrive(accessToken: string, replaceAll = false): Promise<number> {
+export interface RestoreResult {
+  importedCount: number;
+  newInsertedCount: number;
+  updatedOrMergedCount: number;
+}
+
+export async function restoreBackupFromDrive(accessToken: string, replaceAll = false): Promise<RestoreResult> {
   const backupFile = await findDriveBackupFile(accessToken);
   if (!backupFile) {
     throw new Error('No cloud backup found on your Google Drive.');
@@ -92,5 +98,9 @@ export async function restoreBackupFromDrive(accessToken: string, replaceAll = f
 
   const payload: ExportDataPayload = await response.json();
   const res = await importDatabaseJSON(payload, replaceAll);
-  return res.importedCount;
+  return {
+    importedCount: res.importedCount,
+    newInsertedCount: res.newInsertedCount,
+    updatedOrMergedCount: res.updatedOrMergedCount,
+  };
 }

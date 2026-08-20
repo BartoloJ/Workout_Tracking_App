@@ -12,12 +12,14 @@ export interface ExerciseSet {
 
 export interface Workout {
   id?: number;
+  sync_id?: string; // unique persistent UUID across sync operations and devices
   date: string; // "YYYY-MM-DD"
   type: WorkoutType;
   intensity_score: number; // 1 to 4 (0 is rest/inactive)
   notes?: string;
   duration_mins?: number;
   created_at?: number;
+  updated_at?: number;
 }
 
 export interface ExerciseLog {

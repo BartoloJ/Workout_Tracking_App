@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
-import { uploadBackupToDrive, findDriveBackupFile, restoreBackupFromDrive, DriveBackupInfo } from '../services/googleDriveService';
+import { uploadBackupToDrive, findDriveBackupFile, restoreBackupFromDrive, DriveBackupInfo, RestoreResult } from '../services/googleDriveService';
 
 interface GoogleAuthContextType {
   accessToken: string | null;
@@ -16,7 +16,7 @@ interface GoogleAuthContextType {
   signIn: () => void;
   signOut: () => void;
   backupNow: () => Promise<void>;
-  restoreNow: (replaceAll?: boolean) => Promise<number>;
+  restoreNow: (replaceAll?: boolean) => Promise<RestoreResult>;
   refreshBackupInfo: () => Promise<void>;
   clearError: () => void;
 }
@@ -39,7 +39,7 @@ const GoogleAuthContext = createContext<GoogleAuthContextType>({
   signIn: () => {},
   signOut: () => {},
   backupNow: async () => {},
-  restoreNow: async () => 0,
+  restoreNow: async () => ({ importedCount: 0, newInsertedCount: 0, updatedOrMergedCount: 0 }),
   refreshBackupInfo: async () => {},
   clearError: () => {},
 });

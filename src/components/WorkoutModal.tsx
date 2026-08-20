@@ -459,11 +459,13 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
 
       const workoutPayload: Omit<Workout, 'id'> & { id?: number } = {
         id: editWorkoutData?.workout.id,
+        sync_id: editWorkoutData?.workout.sync_id,
         date,
         type: workoutType,
         intensity_score: intensityScore,
         duration_mins: Number(durationMins) || 45,
-        notes
+        notes,
+        created_at: editWorkoutData?.workout.created_at
       };
 
       const exercisesPayload = isStrengthIncluded ? exercises : [];

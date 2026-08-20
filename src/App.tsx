@@ -3,6 +3,7 @@ import {
   getAllWorkoutsWithDetails,
   calculateStreakStats,
   seedSampleWorkouts,
+  ensureAllWorkoutsHaveSyncIds,
   db
 } from './db';
 import { WorkoutWithDetails, StreakStats } from './types';
@@ -95,6 +96,8 @@ export default function App() {
         // Automatically seed sample data on first launch so user gets instant heat-map experience
         await seedSampleWorkouts();
         refreshData();
+      } else {
+        await ensureAllWorkoutsHaveSyncIds();
       }
     };
     checkInitialSeed();

@@ -28,10 +28,57 @@ export class WorkoutTrackerDatabase extends Dexie {
     this.version(2).stores({
       custom_exercises: '++id, &name, category'
     });
+    this.version(3).stores({
+      workouts: '++id, sync_id, date, type, intensity_score, created_at'
+    });
   }
 }
 
 export const db = new WorkoutTrackerDatabase();
+
+/**
+ * Generate a unique sync_id for duplicate protection across sync operations and devices
+ */
+export function generateSyncId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'w_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 11);
+}
+
+/**
+ * Helper to compute an exercise fingerprint for duplicate matching
+ */
+function getExerciseFingerprint(exercises?: Array<{ exercise_name: string; sets?: ExerciseSet[] }>): string {
+  if (!exercises || exercises.length === 0) return '';
+  return exercises
+    .map(e => `${e.exercise_name.trim().toLowerCase()}:${e.sets?.length || 0}`)
+    .sort()
+    .join('|');
+}
+
+/**
+ * Ensure all existing workouts in local database have a unique sync_id
+ */
+export async function ensureAllWorkoutsHaveSyncIds(): Promise<number> {
+  try {
+    let updated = 0;
+    const allWorkouts = await db.workouts.toArray();
+    for (const w of allWorkouts) {
+      if (!w.sync_id && w.id) {
+        await db.workouts.update(w.id, {
+          sync_id: generateSyncId(),
+          created_at: w.created_at || Date.now()
+        });
+        updated++;
+      }
+    }
+    return updated;
+  } catch (err) {
+    console.error('Error backfilling sync_ids:', err);
+    return 0;
+  }
+}
 
 /**
  * Fetch all custom created exercises from IndexedDB
@@ -256,29 +303,39 @@ export async function saveWorkoutWithDetails(
 ): Promise<number> {
   return await db.transaction('rw', db.workouts, db.exercise_logs, db.cardio_logs, db.custom_exercises, async () => {
     let workoutId = workoutData.id;
+    const now = Date.now();
 
     if (workoutId) {
+      // Find existing workout to preserve its sync_id or created_at if not provided
+      const existing = await db.workouts.get(workoutId);
+      const syncId = workoutData.sync_id || existing?.sync_id || generateSyncId();
+
       // Update existing workout
       await db.workouts.update(workoutId, {
+        sync_id: syncId,
         date: workoutData.date,
         type: workoutData.type,
         intensity_score: workoutData.intensity_score,
         notes: workoutData.notes || '',
-        duration_mins: workoutData.duration_mins || 0
+        duration_mins: workoutData.duration_mins || 0,
+        updated_at: now
       });
 
       // Clear previous sub-logs for this workout to replace with fresh entries
       await db.exercise_logs.where('workout_id').equals(workoutId).delete();
       await db.cardio_logs.where('workout_id').equals(workoutId).delete();
     } else {
-      // Create new workout
+      // Create new workout with unique sync_id
+      const syncId = workoutData.sync_id || generateSyncId();
       workoutId = await db.workouts.add({
+        sync_id: syncId,
         date: workoutData.date,
         type: workoutData.type,
         intensity_score: workoutData.intensity_score,
         notes: workoutData.notes || '',
         duration_mins: workoutData.duration_mins || 0,
-        created_at: Date.now()
+        created_at: workoutData.created_at || now,
+        updated_at: now
       });
     }
 
@@ -486,9 +543,12 @@ export async function exportDatabaseJSON(): Promise<ExportDataPayload> {
 }
 
 /**
- * Restore database from JSON backup file
+ * Restore database from JSON backup file with robust duplicate workout protection
  */
-export async function importDatabaseJSON(payload: ExportDataPayload, replaceAll = false): Promise<{ success: boolean; importedCount: number }> {
+export async function importDatabaseJSON(
+  payload: ExportDataPayload,
+  replaceAll = false
+): Promise<{ success: boolean; importedCount: number; newInsertedCount: number; updatedOrMergedCount: number }> {
   if (!payload || !Array.isArray(payload.workouts)) {
     throw new Error('Invalid JSON backup file format.');
   }
@@ -499,46 +559,197 @@ export async function importDatabaseJSON(payload: ExportDataPayload, replaceAll 
       await db.exercise_logs.clear();
       await db.cardio_logs.clear();
       await db.custom_exercises.clear();
-    }
 
-    // Mapping old workout ids to newly inserted ids if merging
-    if (replaceAll) {
-      if (payload.workouts.length > 0) await db.workouts.bulkAdd(payload.workouts);
+      // Ensure all imported workouts have sync_id
+      const workoutsToInsert = payload.workouts.map(w => ({
+        ...w,
+        sync_id: w.sync_id || generateSyncId(),
+        created_at: w.created_at || Date.now(),
+        updated_at: w.updated_at || Date.now()
+      }));
+
+      if (workoutsToInsert.length > 0) await db.workouts.bulkAdd(workoutsToInsert);
       if (payload.exercise_logs?.length > 0) await db.exercise_logs.bulkAdd(payload.exercise_logs);
       if (payload.cardio_logs?.length > 0) await db.cardio_logs.bulkAdd(payload.cardio_logs);
       if (payload.custom_exercises?.length) await db.custom_exercises.bulkAdd(payload.custom_exercises);
-    } else {
-      // Merge mode
-      if (payload.custom_exercises && payload.custom_exercises.length > 0) {
-        for (const ce of payload.custom_exercises) {
-          const existing = await db.custom_exercises.where('name').equalsIgnoreCase(ce.name).first();
-          if (!existing) {
-            await db.custom_exercises.add({
-              name: ce.name,
-              category: ce.category,
-              defaultReps: ce.defaultReps || 10,
-              defaultWeight: ce.defaultWeight || 50,
-              isCustom: true,
-              created_at: ce.created_at || Date.now()
+
+      return {
+        success: true,
+        importedCount: payload.workouts.length,
+        newInsertedCount: payload.workouts.length,
+        updatedOrMergedCount: 0
+      };
+    }
+
+    // MERGE MODE: Deduplicate and update or insert safely without adding clones
+    let newInsertedCount = 0;
+    let updatedOrMergedCount = 0;
+
+    // 1. Merge custom exercises
+    if (payload.custom_exercises && payload.custom_exercises.length > 0) {
+      for (const ce of payload.custom_exercises) {
+        const existing = await db.custom_exercises.where('name').equalsIgnoreCase(ce.name).first();
+        if (!existing) {
+          await db.custom_exercises.add({
+            name: ce.name,
+            category: ce.category,
+            defaultReps: ce.defaultReps || 10,
+            defaultWeight: ce.defaultWeight || 50,
+            isCustom: true,
+            created_at: ce.created_at || Date.now()
+          });
+        }
+      }
+    }
+
+    // 2. Load existing local workouts & sub-logs
+    const localWorkouts = await db.workouts.toArray();
+    const localExercises = await db.exercise_logs.toArray();
+    const localCardio = await db.cardio_logs.toArray();
+
+    const localExMap = new Map<number, ExerciseLog[]>();
+    localExercises.forEach(e => {
+      if (!localExMap.has(e.workout_id)) localExMap.set(e.workout_id, []);
+      localExMap.get(e.workout_id)!.push(e);
+    });
+
+    const localCardioMap = new Map<number, CardioLog>();
+    localCardio.forEach(c => {
+      localCardioMap.set(c.workout_id, c);
+    });
+
+    const localBySyncId = new Map<string, Workout>();
+    localWorkouts.forEach(w => {
+      if (w.sync_id) localBySyncId.set(w.sync_id, w);
+    });
+
+    // 3. Process each incoming workout with duplicate protection
+    for (const w of payload.workouts) {
+      const oldId = w.id;
+      const incomingExercises = (oldId && payload.exercise_logs)
+        ? payload.exercise_logs.filter(e => e.workout_id === oldId)
+        : [];
+      const incomingCardio = (oldId && payload.cardio_logs)
+        ? payload.cardio_logs.find(c => c.workout_id === oldId)
+        : undefined;
+
+      let existingLocalMatch: Workout | undefined = undefined;
+
+      // Match Strategy 1: Direct sync_id match
+      if (w.sync_id && localBySyncId.has(w.sync_id)) {
+        existingLocalMatch = localBySyncId.get(w.sync_id);
+      }
+
+      // Match Strategy 2: Timestamp or Content fingerprint match
+      if (!existingLocalMatch) {
+        const incomingExFingerprint = getExerciseFingerprint(incomingExercises);
+        const incomingCardioFingerprint = incomingCardio
+          ? `${incomingCardio.activity_type}:${incomingCardio.duration_mins}:${incomingCardio.distance_miles}`
+          : '';
+
+        existingLocalMatch = localWorkouts.find(lw => {
+          if (lw.date !== w.date || lw.type !== w.type) return false;
+
+          // If created_at is identical (within 2s)
+          if (lw.created_at && w.created_at && Math.abs(lw.created_at - w.created_at) < 2000) {
+            return true;
+          }
+
+          // Compare fingerprint
+          const localExs = localExMap.get(lw.id || 0) || [];
+          const localExFingerprint = getExerciseFingerprint(localExs);
+          const localC = localCardioMap.get(lw.id || 0);
+          const localCardioFingerprint = localC
+            ? `${localC.activity_type}:${localC.duration_mins}:${localC.distance_miles}`
+            : '';
+
+          return (
+            (lw.duration_mins || 0) === (w.duration_mins || 0) &&
+            lw.intensity_score === w.intensity_score &&
+            localExFingerprint === incomingExFingerprint &&
+            localCardioFingerprint === incomingCardioFingerprint
+          );
+        });
+      }
+
+      if (existingLocalMatch && existingLocalMatch.id) {
+        // MATCH FOUND: This workout already exists locally!
+        // Update the existing record in-place if needed, keeping its local ID and attaching sync_id
+        const targetId = existingLocalMatch.id;
+        const resolvedSyncId = existingLocalMatch.sync_id || w.sync_id || generateSyncId();
+
+        await db.workouts.update(targetId, {
+          sync_id: resolvedSyncId,
+          type: w.type,
+          intensity_score: w.intensity_score,
+          notes: w.notes || existingLocalMatch.notes || '',
+          duration_mins: w.duration_mins || existingLocalMatch.duration_mins || 0,
+          updated_at: Math.max(w.updated_at || 0, existingLocalMatch.updated_at || 0, Date.now())
+        });
+
+        // Update local lookup map
+        existingLocalMatch.sync_id = resolvedSyncId;
+        localBySyncId.set(resolvedSyncId, existingLocalMatch);
+
+        // If incoming has exercise logs, refresh sub-logs cleanly
+        if (incomingExercises.length > 0) {
+          await db.exercise_logs.where('workout_id').equals(targetId).delete();
+          for (const me of incomingExercises) {
+            await db.exercise_logs.add({
+              workout_id: targetId,
+              exercise_name: me.exercise_name,
+              category: me.category,
+              sets: me.sets,
+              notes: me.notes
             });
           }
         }
-      }
 
-      for (const w of payload.workouts) {
-        const oldId = w.id;
+        if (incomingCardio) {
+          await db.cardio_logs.where('workout_id').equals(targetId).delete();
+          await db.cardio_logs.add({
+            workout_id: targetId,
+            activity_type: incomingCardio.activity_type,
+            duration_mins: incomingCardio.duration_mins,
+            distance_miles: incomingCardio.distance_miles,
+            zone2: incomingCardio.zone2,
+            avg_hr: incomingCardio.avg_hr,
+            calories: incomingCardio.calories,
+            notes: incomingCardio.notes
+          });
+        }
+
+        updatedOrMergedCount++;
+      } else {
+        // NO MATCH FOUND: Truly a new workout! Insert cleanly with unique sync_id.
+        const assignedSyncId = w.sync_id || generateSyncId();
         const newId = await db.workouts.add({
+          sync_id: assignedSyncId,
           date: w.date,
           type: w.type,
           intensity_score: w.intensity_score,
           notes: w.notes || '',
           duration_mins: w.duration_mins,
-          created_at: w.created_at || Date.now()
+          created_at: w.created_at || Date.now(),
+          updated_at: w.updated_at || Date.now()
         });
 
-        if (oldId && payload.exercise_logs) {
-          const matchedExercises = payload.exercise_logs.filter(e => e.workout_id === oldId);
-          for (const me of matchedExercises) {
+        const newWorkoutObj: Workout = {
+          id: newId,
+          sync_id: assignedSyncId,
+          date: w.date,
+          type: w.type,
+          intensity_score: w.intensity_score,
+          notes: w.notes,
+          duration_mins: w.duration_mins,
+          created_at: w.created_at,
+          updated_at: w.updated_at
+        };
+        localWorkouts.push(newWorkoutObj);
+        localBySyncId.set(assignedSyncId, newWorkoutObj);
+
+        if (incomingExercises.length > 0) {
+          for (const me of incomingExercises) {
             await db.exercise_logs.add({
               workout_id: newId,
               exercise_name: me.exercise_name,
@@ -549,25 +760,116 @@ export async function importDatabaseJSON(payload: ExportDataPayload, replaceAll 
           }
         }
 
-        if (oldId && payload.cardio_logs) {
-          const matchedCardio = payload.cardio_logs.filter(c => c.workout_id === oldId);
-          for (const mc of matchedCardio) {
-            await db.cardio_logs.add({
-              workout_id: newId,
-              activity_type: mc.activity_type,
-              duration_mins: mc.duration_mins,
-              distance_miles: mc.distance_miles,
-              zone2: mc.zone2,
-              avg_hr: mc.avg_hr,
-              calories: mc.calories,
-              notes: mc.notes
-            });
-          }
+        if (incomingCardio) {
+          await db.cardio_logs.add({
+            workout_id: newId,
+            activity_type: incomingCardio.activity_type,
+            duration_mins: incomingCardio.duration_mins,
+            distance_miles: incomingCardio.distance_miles,
+            zone2: incomingCardio.zone2,
+            avg_hr: incomingCardio.avg_hr,
+            calories: incomingCardio.calories,
+            notes: incomingCardio.notes
+          });
         }
+
+        newInsertedCount++;
       }
     }
 
-    return { success: true, importedCount: payload.workouts.length };
+    return {
+      success: true,
+      importedCount: payload.workouts.length,
+      newInsertedCount,
+      updatedOrMergedCount
+    };
+  });
+}
+
+/**
+ * Clean up and merge any duplicate workouts that exist in the local database
+ */
+export async function deduplicateWorkouts(): Promise<{ removedCount: number; keptCount: number }> {
+  return await db.transaction('rw', db.workouts, db.exercise_logs, db.cardio_logs, async () => {
+    const allWorkouts = await db.workouts.toArray();
+    const allExercises = await db.exercise_logs.toArray();
+    const allCardio = await db.cardio_logs.toArray();
+
+    const exMap = new Map<number, ExerciseLog[]>();
+    allExercises.forEach(ex => {
+      if (!exMap.has(ex.workout_id)) exMap.set(ex.workout_id, []);
+      exMap.get(ex.workout_id)!.push(ex);
+    });
+
+    const cardioMap = new Map<number, CardioLog>();
+    allCardio.forEach(c => {
+      cardioMap.set(c.workout_id, c);
+    });
+
+    // Group workouts by sync_id or content signature
+    const groups = new Map<string, Workout[]>();
+
+    allWorkouts.forEach(w => {
+      let key = '';
+      if (w.sync_id) {
+        key = `sync_${w.sync_id}`;
+      } else {
+        const exs = exMap.get(w.id || 0) || [];
+        const exFingerprint = getExerciseFingerprint(exs);
+        const cardio = cardioMap.get(w.id || 0);
+        const cardioFingerprint = cardio ? `${cardio.activity_type}:${cardio.duration_mins}:${cardio.distance_miles}` : '';
+        key = `fp_${w.date}_${w.type}_${w.duration_mins || 0}_${w.intensity_score}_${exFingerprint}_${cardioFingerprint}`;
+      }
+
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(w);
+    });
+
+    let removedCount = 0;
+    let keptCount = 0;
+
+    for (const [, group] of groups.entries()) {
+      if (group.length === 1) {
+        // Ensure single record has sync_id
+        const item = group[0];
+        if (item.id && !item.sync_id) {
+          await db.workouts.update(item.id, { sync_id: generateSyncId() });
+        }
+        keptCount++;
+        continue;
+      }
+
+      // If group has duplicates: pick the best one to preserve
+      group.sort((a, b) => {
+        const aExCount = (exMap.get(a.id || 0) || []).length;
+        const bExCount = (exMap.get(b.id || 0) || []).length;
+        if (bExCount !== aExCount) return bExCount - aExCount;
+        return (b.id || 0) - (a.id || 0);
+      });
+
+      const primary = group[0];
+      keptCount++;
+
+      // Delete the duplicate workouts and their child logs
+      const duplicatesToDelete = group.slice(1);
+      for (const dup of duplicatesToDelete) {
+        if (dup.id) {
+          await db.workouts.delete(dup.id);
+          await db.exercise_logs.where('workout_id').equals(dup.id).delete();
+          await db.cardio_logs.where('workout_id').equals(dup.id).delete();
+          removedCount++;
+        }
+      }
+
+      // Ensure primary has sync_id
+      if (primary.id && !primary.sync_id) {
+        await db.workouts.update(primary.id, {
+          sync_id: generateSyncId()
+        });
+      }
+    }
+
+    return { removedCount, keptCount };
   });
 }
 
@@ -766,12 +1068,14 @@ export async function seedSampleWorkouts(): Promise<void> {
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
       const wId = await db.workouts.add({
+        sync_id: `seed_workout_${dateStr}_${splitIndex}`,
         date: dateStr,
         type: split.type,
         intensity_score: split.intensity,
         notes: split.notes,
         duration_mins: split.duration,
-        created_at: d.getTime()
+        created_at: d.getTime(),
+        updated_at: d.getTime()
       });
 
       if (split.exercises) {
