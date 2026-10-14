@@ -155,6 +155,32 @@ export const CARDIO_ACTIVITIES = [
   { id: 'hiit', name: 'HIIT / Circuit', icon: 'Zap', defaultDistance: 1.5, defaultDuration: 15, defaultSpeed: 6.0 },
 ];
 
+export interface ActiveWorkoutDraft {
+  savedAt: number;
+  initialDate?: string;
+  isEditingExisting: boolean;
+  editWorkoutData?: WorkoutWithDetails | null;
+  // Workout fields
+  date: string;
+  workoutType: WorkoutType;
+  intensityScore: number;
+  durationMins: string;
+  notes: string;
+  exercises: Array<Omit<ExerciseLog, 'id' | 'workout_id'> & { id?: number }>;
+  // Cardio fields
+  cardioActivity: string;
+  cardioDurationStr: string;
+  cardioDistanceStr: string;
+  cardioSpeedStr: string;
+  isZone2: boolean;
+  avgHeartRate: string;
+  calories: string;
+  cardioNotes: string;
+  routePoints?: GPSPoint[];
+  isGpsTracked: boolean;
+  elevationGainFt?: number;
+}
+
 export interface UserPreferences {
   // Feature Toggles
   showZone2: boolean; // if false, removes all Zone 2 tracking, filters, badges, and counters
@@ -170,6 +196,8 @@ export interface UserPreferences {
   showFloatingRestTimer: boolean; // if false, hides the mini floating rest timer widget
   compactFeedView: boolean; // if true, renders tight condensed feed rows
   enableGpsTracking: boolean; // if false, completely disables GPS mode & hides all GPS tracking buttons/HUD for troubleshooting
+  autoSaveWorkoutDraft: boolean; // continuously persists in-progress workouts to survive phone locking / app switching
+  keepScreenAwakeDuringWorkout: boolean; // uses Screen Wake Lock to prevent phone screen from locking during workout sessions
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -186,6 +214,8 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   showFloatingRestTimer: true,
   compactFeedView: false,
   enableGpsTracking: true,
+  autoSaveWorkoutDraft: true,
+  keepScreenAwakeDuringWorkout: true,
 };
 
 export type PresetTheme = 'full' | 'ultra_minimal' | 'strength_only' | 'cardio_only';

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   X,
   Dumbbell,
@@ -24,7 +24,10 @@ import {
   Trophy,
   Award,
   Navigation,
-  MapPin
+  MapPin,
+  ShieldCheck,
+  Smartphone,
+  AlertTriangle
 } from 'lucide-react';
 import {
   Workout,
@@ -38,8 +41,15 @@ import {
   PredefinedExercise,
   PREDEFINED_EXERCISES,
   CARDIO_ACTIVITIES,
-  GPSPoint
+  GPSPoint,
+  ActiveWorkoutDraft
 } from '../types';
+import {
+  saveActiveWorkoutDraft,
+  clearActiveWorkoutDraft,
+  hasMeaningfulContent,
+  formatDraftTime
+} from '../utils/workoutDraft';
 import { GpsTrackerModal } from './GpsTrackerModal';
 import { RouteMap } from './RouteMap';
 import {
@@ -60,6 +70,8 @@ interface WorkoutModalProps {
   onSaved: () => void;
   initialDate?: string;
   editWorkoutData?: WorkoutWithDetails | null;
+  restoredDraft?: ActiveWorkoutDraft | null;
+  onClearDraft?: () => void;
 }
 
 export const WorkoutModal: React.FC<WorkoutModalProps> = ({
@@ -67,7 +79,9 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   onClose,
   onSaved,
   initialDate,
-  editWorkoutData
+  editWorkoutData,
+  restoredDraft,
+  onClearDraft
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
   const { isAuthenticated, autoSyncEnabled, backupNow } = useGoogleAuth();
@@ -124,6 +138,50 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   const [isGpsTracked, setIsGpsTracked] = useState<boolean>(false);
   const [elevationGainFt, setElevationGainFt] = useState<number | undefined>(undefined);
   const [isGpsTrackerOpen, setIsGpsTrackerOpen] = useState<boolean>(false);
+
+  // Session persistence and background recovery state
+  const [lastSavedTimestamp, setLastSavedTimestamp] = useState<number | null>(null);
+  const [isRestoredFromDraft, setIsRestoredFromDraft] = useState<boolean>(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState<boolean>(false);
+  const [isScreenAwakeActive, setIsScreenAwakeActive] = useState<boolean>(false);
+  const currentStateRef = useRef<ActiveWorkoutDraft | null>(null);
+  const wakeLockSentinelRef = useRef<any>(null);
+
+  // Screen Wake Lock API to prevent phone sleeping during workouts
+  const requestWakeLock = useCallback(async () => {
+    if (
+      typeof navigator !== 'undefined' &&
+      'wakeLock' in navigator &&
+      preferences.keepScreenAwakeDuringWorkout !== false
+    ) {
+      try {
+        if (!wakeLockSentinelRef.current) {
+          const sentinel = await (navigator as any).wakeLock.request('screen');
+          wakeLockSentinelRef.current = sentinel;
+          setIsScreenAwakeActive(true);
+          sentinel.addEventListener('release', () => {
+            wakeLockSentinelRef.current = null;
+            setIsScreenAwakeActive(false);
+          });
+        }
+      } catch (err) {
+        setIsScreenAwakeActive(false);
+      }
+    }
+  }, [preferences.keepScreenAwakeDuringWorkout]);
+
+  useEffect(() => {
+    if (isOpen && preferences.keepScreenAwakeDuringWorkout !== false) {
+      requestWakeLock();
+    }
+    return () => {
+      if (wakeLockSentinelRef.current) {
+        wakeLockSentinelRef.current.release().catch(() => {});
+        wakeLockSentinelRef.current = null;
+        setIsScreenAwakeActive(false);
+      }
+    };
+  }, [isOpen, preferences.keepScreenAwakeDuringWorkout, requestWakeLock]);
 
   // Load custom exercises on open
   useEffect(() => {
@@ -188,10 +246,40 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
     return combined;
   }, [customExercises]);
 
-  // Initialize or reset form when modal opens or edit data changes
+  // Initialize or reset form when modal opens, draft is restored, or edit data changes
   useEffect(() => {
     if (isOpen) {
-      if (editWorkoutData) {
+      if (restoredDraft) {
+        // Populate from restored draft
+        setDate(restoredDraft.date || initialDate || todayStr);
+        setWorkoutType(restoredDraft.workoutType || 'hybrid');
+        setIntensityScore(restoredDraft.intensityScore ?? 3);
+        setDurationMins(restoredDraft.durationMins || '45');
+        setNotes(restoredDraft.notes || '');
+
+        setExercises(
+          (restoredDraft.exercises || []).map(e => ({
+            exercise_name: e.exercise_name,
+            category: e.category,
+            sets: e.sets.map(s => ({ ...s })),
+            notes: e.notes || ''
+          }))
+        );
+
+        setCardioActivity(restoredDraft.cardioActivity || 'running');
+        setCardioDurationStr(restoredDraft.cardioDurationStr || '20');
+        setCardioDistanceStr(restoredDraft.cardioDistanceStr || '2.5');
+        setCardioSpeedStr(restoredDraft.cardioSpeedStr || '7.5');
+        setIsZone2(restoredDraft.isZone2 ?? true);
+        setAvgHeartRate(restoredDraft.avgHeartRate || '');
+        setCalories(restoredDraft.calories || '');
+        setCardioNotes(restoredDraft.cardioNotes || '');
+        setRoutePoints(restoredDraft.routePoints);
+        setIsGpsTracked(restoredDraft.isGpsTracked || false);
+        setElevationGainFt(restoredDraft.elevationGainFt);
+        setLastSavedTimestamp(restoredDraft.savedAt);
+        setIsRestoredFromDraft(true);
+      } else if (editWorkoutData) {
         // Populate edit state
         setDate(editWorkoutData.workout.date);
         setWorkoutType(editWorkoutData.workout.type);
@@ -233,6 +321,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
           setIsGpsTracked(false);
           setElevationGainFt(undefined);
         }
+        setIsRestoredFromDraft(false);
       } else {
         // Fresh state
         setDate(initialDate || todayStr);
@@ -245,9 +334,9 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
             exercise_name: 'Barbell Bench Press',
             category: 'push',
             sets: [
-              { set_number: 1, reps: 10, weight_lbs: 135, completed: true },
-              { set_number: 2, reps: 8, weight_lbs: 185, completed: true },
-              { set_number: 3, reps: 6, weight_lbs: 205, completed: true }
+              { set_number: 1, reps: 10, weight_lbs: 135, completed: false },
+              { set_number: 2, reps: 8, weight_lbs: 185, completed: false },
+              { set_number: 3, reps: 6, weight_lbs: 205, completed: false }
             ]
           }
         ]);
@@ -262,11 +351,144 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
         setRoutePoints(undefined);
         setIsGpsTracked(false);
         setElevationGainFt(undefined);
+        setIsRestoredFromDraft(false);
       }
       setShowAddExercisePicker(false);
       setExerciseSearch('');
+      setShowDiscardConfirm(false);
     }
-  }, [isOpen, initialDate, editWorkoutData]);
+  }, [isOpen, initialDate, editWorkoutData, restoredDraft]);
+
+  // Synchronize state to ref and debounced autosave
+  useEffect(() => {
+    if (!isOpen) {
+      currentStateRef.current = null;
+      return;
+    }
+
+    const currentDraft: ActiveWorkoutDraft = {
+      savedAt: Date.now(),
+      initialDate,
+      isEditingExisting: Boolean(editWorkoutData),
+      editWorkoutData: editWorkoutData || null,
+      date,
+      workoutType,
+      intensityScore,
+      durationMins,
+      notes,
+      exercises,
+      cardioActivity,
+      cardioDurationStr,
+      cardioDistanceStr,
+      cardioSpeedStr,
+      isZone2,
+      avgHeartRate,
+      calories,
+      cardioNotes,
+      routePoints,
+      isGpsTracked,
+      elevationGainFt
+    };
+
+    currentStateRef.current = currentDraft;
+
+    if (preferences.autoSaveWorkoutDraft !== false) {
+      const timer = setTimeout(() => {
+        saveActiveWorkoutDraft(currentDraft);
+        setLastSavedTimestamp(Date.now());
+      }, 350);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    isOpen,
+    initialDate,
+    editWorkoutData,
+    date,
+    workoutType,
+    intensityScore,
+    durationMins,
+    notes,
+    exercises,
+    cardioActivity,
+    cardioDurationStr,
+    cardioDistanceStr,
+    cardioSpeedStr,
+    isZone2,
+    avgHeartRate,
+    calories,
+    cardioNotes,
+    routePoints,
+    isGpsTracked,
+    elevationGainFt,
+    preferences.autoSaveWorkoutDraft
+  ]);
+
+  // Immediate synchronous draft persistence when phone locks, switches app, or unloads
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const flushDraftImmediately = () => {
+      if (currentStateRef.current && preferences.autoSaveWorkoutDraft !== false) {
+        saveActiveWorkoutDraft({
+          ...currentStateRef.current,
+          savedAt: Date.now()
+        });
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Phone locked or user moved to another application!
+        flushDraftImmediately();
+      } else if (document.visibilityState === 'visible') {
+        // User returned: re-acquire wake lock if needed
+        requestWakeLock();
+      }
+    };
+
+    const handlePageHide = () => {
+      flushDraftImmediately();
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      flushDraftImmediately();
+      if (
+        hasMeaningfulContent(
+          exercises,
+          notes,
+          cardioDistanceStr,
+          cardioNotes,
+          routePoints?.length || 0,
+          editWorkoutData
+        )
+      ) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [
+    isOpen,
+    exercises,
+    notes,
+    cardioDistanceStr,
+    cardioNotes,
+    routePoints,
+    editWorkoutData,
+    preferences.autoSaveWorkoutDraft,
+    requestWakeLock
+  ]);
 
   // Strength Helper Functions
   const handleAddPredefinedExercise = (name: string, category: ExerciseCategory, defaultReps = 10, defaultWeight = 135) => {
@@ -276,8 +498,8 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
         exercise_name: name,
         category,
         sets: [
-          { set_number: 1, reps: defaultReps, weight_lbs: defaultWeight, completed: true },
-          { set_number: 2, reps: defaultReps, weight_lbs: defaultWeight, completed: true },
+          { set_number: 1, reps: defaultReps, weight_lbs: defaultWeight, completed: false },
+          { set_number: 2, reps: defaultReps, weight_lbs: defaultWeight, completed: false },
           { set_number: 3, reps: defaultReps, weight_lbs: defaultWeight, completed: false }
         ]
       }
@@ -596,7 +818,12 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
           }
         : null;
 
+
       await saveWorkoutWithDetails(workoutPayload, exercisesPayload, cardioPayload);
+
+      // Successfully saved to persistent database: clear active draft
+      clearActiveWorkoutDraft();
+      onClearDraft?.();
 
       // Background cloud backup to Google Drive if connected and auto-sync is on
       if (isAuthenticated && autoSyncEnabled) {
@@ -617,6 +844,26 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
       console.error('Failed to save workout to IndexedDB:', err);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Safe Close Handler with Unsaved Progress Protection
+  const handleSafeClose = () => {
+    const hasData = hasMeaningfulContent(
+      exercises,
+      notes,
+      cardioDistanceStr,
+      cardioNotes,
+      routePoints?.length || 0,
+      editWorkoutData
+    );
+
+    if (hasData) {
+      setShowDiscardConfirm(true);
+    } else {
+      clearActiveWorkoutDraft();
+      onClearDraft?.();
+      onClose();
     }
   };
 
@@ -646,11 +893,67 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto"
+      onClick={e => {
+        if (e.target === e.currentTarget) handleSafeClose();
+      }}
+    >
       <div
         id="workout-modal-container"
         className="relative w-full max-w-3xl bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl shadow-black my-8 max-h-[90vh] flex flex-col overflow-hidden"
       >
+        {/* Unsaved Draft Protection Modal Confirmation */}
+        {showDiscardConfirm && (
+          <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-150">
+            <div className="w-full max-w-md bg-zinc-900 border border-zinc-700/80 rounded-2xl p-6 shadow-2xl space-y-4 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-amber-950/80 border border-amber-700/50 text-amber-400 flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-zinc-100">Active Workout in Progress</h3>
+                <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                  You have recorded exercises, sets, or notes. Your workout is automatically saved as a draft. What would you like to do?
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  type="button"
+                  id="keep-workout-btn"
+                  onClick={() => setShowDiscardConfirm(false)}
+                  className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs rounded-xl shadow-md transition-all touch-press cursor-pointer"
+                >
+                  Keep Logging Workout
+                </button>
+                <button
+                  type="button"
+                  id="save-draft-close-btn"
+                  onClick={() => {
+                    setShowDiscardConfirm(false);
+                    onClose();
+                  }}
+                  className="w-full py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs rounded-xl border border-zinc-700 transition-all touch-press cursor-pointer"
+                >
+                  Save Draft & Close (Resume Later)
+                </button>
+                <button
+                  type="button"
+                  id="discard-workout-confirm-btn"
+                  onClick={() => {
+                    clearActiveWorkoutDraft();
+                    onClearDraft?.();
+                    setShowDiscardConfirm(false);
+                    onClose();
+                  }}
+                  className="w-full py-2.5 px-4 bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 font-semibold text-xs rounded-xl border border-rose-900/60 transition-all touch-press cursor-pointer"
+                >
+                  Discard Workout
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal Header */}
         <div className="px-6 py-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/60">
           <div className="flex items-center gap-3">
@@ -664,9 +967,34 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
               )}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-zinc-100 tracking-tight">
-                {editWorkoutData ? 'Edit Workout Session' : 'Log Workout Session'}
-              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-bold text-zinc-100 tracking-tight">
+                  {editWorkoutData ? 'Edit Workout Session' : 'Log Workout Session'}
+                </h2>
+                {isRestoredFromDraft && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-800/80 rounded-full font-bold">
+                    Restored from Autosave
+                  </span>
+                )}
+                {preferences.autoSaveWorkoutDraft !== false && (
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 bg-zinc-900 text-zinc-300 border border-zinc-800 rounded-full"
+                    title="Continuous real-time local persistence protects progress when locking phone or switching applications"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    {lastSavedTimestamp ? `Autosaved ${formatDraftTime(lastSavedTimestamp)}` : 'Autosaved'}
+                  </span>
+                )}
+                {isScreenAwakeActive && (
+                  <span
+                    className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 bg-amber-950/60 text-amber-300 border border-amber-800/60 rounded-full"
+                    title="Screen Wake Lock is active to keep phone awake during workout"
+                  >
+                    <Smartphone className="w-3 h-3 text-amber-400" />
+                    Awake
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-zinc-500 font-medium">
                 Offline-first IndexedDB storage • {date}
               </p>
@@ -692,8 +1020,9 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
 
             <button
               id="close-workout-modal-btn"
-              onClick={onClose}
+              onClick={handleSafeClose}
               className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 transition-colors"
+              title="Close workout session"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1728,7 +2057,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
             <button
               type="button"
               id="cancel-workout-btn"
-              onClick={onClose}
+              onClick={handleSafeClose}
               className="px-4 py-2.5 text-xs font-bold text-zinc-400 hover:text-zinc-200 bg-zinc-900 border border-zinc-800 rounded-xl transition-colors touch-press"
             >
               Cancel

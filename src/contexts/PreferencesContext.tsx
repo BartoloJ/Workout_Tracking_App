@@ -63,7 +63,8 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const applyPreset = useCallback((preset: PresetTheme) => {
     switch (preset) {
       case 'ultra_minimal':
-        setPreferences({
+        setPreferences(prev => ({
+          ...prev,
           showZone2: false,
           showStrengthVolume: false,
           showHeatmap: true,
@@ -76,11 +77,12 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
           showWorkoutNotes: true,
           showFloatingRestTimer: false,
           compactFeedView: true
-        });
+        }));
         break;
 
       case 'strength_only':
-        setPreferences({
+        setPreferences(prev => ({
+          ...prev,
           showZone2: false,
           showStrengthVolume: false,
           showHeatmap: true,
@@ -93,11 +95,12 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
           showWorkoutNotes: true,
           showFloatingRestTimer: true,
           compactFeedView: false
-        });
+        }));
         break;
 
       case 'cardio_only':
-        setPreferences({
+        setPreferences(prev => ({
+          ...prev,
           showZone2: false,
           showStrengthVolume: false,
           showHeatmap: true,
@@ -110,7 +113,7 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
           showWorkoutNotes: true,
           showFloatingRestTimer: false,
           compactFeedView: false
-        });
+        }));
         break;
 
       case 'full':

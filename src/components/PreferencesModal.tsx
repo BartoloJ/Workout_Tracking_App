@@ -17,7 +17,9 @@ import {
   Activity,
   FileText,
   Clock,
-  Navigation
+  Navigation,
+  ShieldCheck,
+  Smartphone
 } from 'lucide-react';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { PresetTheme } from '../types';
@@ -580,6 +582,84 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ isOpen, onCl
                   <span
                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       preferences.compactFeedView ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: Data Protection & Workout Session Persistence */}
+          <div className="p-5 bg-zinc-800/40 rounded-2xl border border-zinc-800 space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-zinc-800">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <h3 className="font-bold text-sm text-zinc-100">
+                Data Protection & Background Safety
+              </h3>
+            </div>
+
+            <div className="space-y-3">
+              {/* Continuous Auto-Save */}
+              <div className="p-3.5 rounded-xl border border-zinc-800/80 bg-zinc-900/60 flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs text-zinc-200 block">
+                      Continuous Auto-Save (Survives Lock & App Switch)
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.2 bg-emerald-950 text-emerald-300 rounded border border-emerald-900/50 font-bold">
+                      Recommended
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Automatically persists your active workout draft in real-time. If your phone locks, the browser reloads, or you switch apps, your recorded sets, reps, and notes are completely protected and can be instantly resumed.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  id="pref-toggle-autosave-btn"
+                  onClick={() => updatePreference('autoSaveWorkoutDraft', !preferences.autoSaveWorkoutDraft)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    preferences.autoSaveWorkoutDraft !== false ? 'bg-emerald-500' : 'bg-zinc-700'
+                  }`}
+                  role="switch"
+                  aria-checked={preferences.autoSaveWorkoutDraft !== false}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      preferences.autoSaveWorkoutDraft !== false ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Keep Screen Awake (Wake Lock) */}
+              <div className="p-3.5 rounded-xl border border-zinc-800/80 bg-zinc-900/60 flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs text-zinc-200 block flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                      Keep Screen Awake During Workouts
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Uses Screen Wake Lock to prevent your phone screen from timing out and locking while logging sets or resting between exercises.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  id="pref-toggle-wakelock-btn"
+                  onClick={() => updatePreference('keepScreenAwakeDuringWorkout', !preferences.keepScreenAwakeDuringWorkout)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    preferences.keepScreenAwakeDuringWorkout !== false ? 'bg-emerald-500' : 'bg-zinc-700'
+                  }`}
+                  role="switch"
+                  aria-checked={preferences.keepScreenAwakeDuringWorkout !== false}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      preferences.keepScreenAwakeDuringWorkout !== false ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>
