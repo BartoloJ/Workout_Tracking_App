@@ -329,21 +329,11 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
         setIntensityScore(3);
         setDurationMins('45');
         setNotes('');
-        setExercises([
-          {
-            exercise_name: 'Barbell Bench Press',
-            category: 'push',
-            sets: [
-              { set_number: 1, reps: 10, weight_lbs: 135, completed: false },
-              { set_number: 2, reps: 8, weight_lbs: 185, completed: false },
-              { set_number: 3, reps: 6, weight_lbs: 205, completed: false }
-            ]
-          }
-        ]);
+        setExercises([]);
         setCardioActivity('running');
         setCardioDurationStr('20');
-        setCardioDistanceStr('2.5');
-        setCardioSpeedStr('7.5');
+        setCardioDistanceStr('');
+        setCardioSpeedStr('');
         setIsZone2(true);
         setAvgHeartRate('135');
         setCalories('220');
@@ -1137,7 +1127,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
                   { score: 1, label: 'Light', desc: 'Active recovery', color: 'border-emerald-900 bg-emerald-950/50 text-emerald-400' },
                   { score: 2, label: 'Moderate', desc: 'Aerobic base / Steady', color: 'border-emerald-700 bg-emerald-800/50 text-emerald-200' },
                   { score: 3, label: 'Hard', desc: 'Vigorous volume', color: 'border-emerald-500 bg-emerald-600/60 text-white' },
-                  { score: 4, label: 'Peak #15803d', desc: 'Max effort / PR', color: 'border-emerald-400 bg-[#15803d] text-white shadow-md' }
+                  { score: 4, label: 'Peak', desc: 'Max effort / PR', color: 'border-emerald-400 bg-emerald-700 text-white shadow-md' }
                 ].map(item => (
                   <button
                     key={item.score}

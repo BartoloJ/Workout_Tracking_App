@@ -11,7 +11,8 @@ import {
   getActiveWorkoutDraft,
   clearActiveWorkoutDraft,
   WORKOUT_DRAFT_EVENT,
-  formatDraftTime
+  formatDraftTime,
+  hasMeaningfulContent
 } from './utils/workoutDraft';
 import { Navbar } from './components/Navbar';
 import { StatsBar } from './components/StatsBar';
@@ -90,10 +91,25 @@ export default function App() {
     const sessionActive = sessionStorage.getItem('workout_session_active');
     const draft = getActiveWorkoutDraft();
     if (sessionActive === 'true' && draft) {
-      setRestoredDraft(draft);
-      setSelectedDateForLog(draft.date);
-      setEditWorkoutData(draft.editWorkoutData || null);
-      setIsLogModalOpen(true);
+      if (
+        hasMeaningfulContent(
+          draft.exercises || [],
+          draft.notes || '',
+          draft.cardioDistanceStr || '',
+          draft.cardioNotes || '',
+          draft.routePoints?.length || 0,
+          draft.editWorkoutData
+        )
+      ) {
+        setRestoredDraft(draft);
+        setSelectedDateForLog(draft.date);
+        setEditWorkoutData(draft.editWorkoutData || null);
+        setIsLogModalOpen(true);
+      } else {
+        clearActiveWorkoutDraft();
+        setActiveDraft(null);
+        sessionStorage.removeItem('workout_session_active');
+      }
     }
   }, []);
 
@@ -146,8 +162,20 @@ export default function App() {
   // Handler: Open logging modal for a specific or current date
   const handleOpenLogModal = (dateStr?: string) => {
     const targetDate = dateStr || new Date().toISOString().split('T')[0];
-    // If an active draft matches this date, offer to restore it or resume
-    if (activeDraft && activeDraft.date === targetDate && !activeDraft.isEditingExisting) {
+    // If an active draft matches this date and has meaningful user input, offer to restore it
+    if (
+      activeDraft &&
+      activeDraft.date === targetDate &&
+      !activeDraft.isEditingExisting &&
+      hasMeaningfulContent(
+        activeDraft.exercises || [],
+        activeDraft.notes || '',
+        activeDraft.cardioDistanceStr || '',
+        activeDraft.cardioNotes || '',
+        activeDraft.routePoints?.length || 0,
+        activeDraft.editWorkoutData
+      )
+    ) {
       setRestoredDraft(activeDraft);
     } else {
       setRestoredDraft(null);
@@ -222,7 +250,16 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-8 space-y-8">
         {/* Active Workout Autosave Recovery Banner */}
-        {activeDraft && !isLogModalOpen && (
+        {activeDraft &&
+          !isLogModalOpen &&
+          hasMeaningfulContent(
+            activeDraft.exercises || [],
+            activeDraft.notes || '',
+            activeDraft.cardioDistanceStr || '',
+            activeDraft.cardioNotes || '',
+            activeDraft.routePoints?.length || 0,
+            activeDraft.editWorkoutData
+          ) && (
           <div
             id="workout-draft-recovery-banner"
             className="bg-gradient-to-r from-emerald-950/90 via-zinc-900 to-zinc-950 border border-emerald-500/50 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl shadow-emerald-950/40 animate-in fade-in slide-in-from-top-2"

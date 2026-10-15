@@ -68,14 +68,21 @@ export function hasMeaningfulContent(
   const dist = parseFloat(cardioDistanceStr);
   if (!isNaN(dist) && dist > 0) return true;
 
-  // Check if any set is completed or has custom non-zero weight/reps
+  // Check if any set has been checked as completed
   for (const ex of exercises) {
     for (const set of ex.sets) {
       if (set.completed) return true;
-      if (set.weight_lbs && set.weight_lbs > 0 && set.reps && set.reps > 0) {
-        // User interacted with sets
-        return true;
-      }
+    }
+  }
+
+  // If there are exercises, ignore stale drafts that only contain default uncompleted Barbell Bench Press
+  if (exercises && exercises.length > 0) {
+    const isOnlyLegacyDefaultBenchPress =
+      exercises.length === 1 &&
+      exercises[0].exercise_name === 'Barbell Bench Press' &&
+      exercises[0].sets.every(s => !s.completed);
+    if (!isOnlyLegacyDefaultBenchPress) {
+      return true;
     }
   }
 

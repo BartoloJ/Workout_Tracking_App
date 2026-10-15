@@ -67,7 +67,7 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
       case 1: return { text: 'Light (Score 1)', color: 'text-emerald-400 bg-emerald-950/80 border-emerald-800' };
       case 2: return { text: 'Moderate (Score 2)', color: 'text-emerald-300 bg-emerald-900/80 border-emerald-700' };
       case 3: return { text: 'Hard (Score 3)', color: 'text-emerald-200 bg-emerald-700/80 border-emerald-500' };
-      case 4: return { text: 'Peak #15803d (Score 4)', color: 'text-white bg-[#15803d] border-emerald-400' };
+      case 4: return { text: 'Peak (Score 4)', color: 'text-white bg-emerald-700 border-emerald-400' };
       default: return { text: `Intensity ${score}`, color: 'text-zinc-400 bg-zinc-800 border-zinc-700' };
     }
   };
