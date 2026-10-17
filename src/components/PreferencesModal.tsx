@@ -19,7 +19,8 @@ import {
   Clock,
   Navigation,
   ShieldCheck,
-  Smartphone
+  Smartphone,
+  Utensils
 } from 'lucide-react';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { PresetTheme } from '../types';
@@ -585,6 +586,114 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ isOpen, onCl
                     }`}
                   />
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Daily Protein Tracking (Optional) */}
+          <div className="p-5 bg-zinc-800/40 rounded-2xl border border-zinc-800 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Utensils className="w-4 h-4 text-emerald-400" />
+                <h3 className="font-bold text-sm text-zinc-100">
+                  Protein Tracking (Optional)
+                </h3>
+              </div>
+              {preferences.dailyProteinGoal > 0 && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/80 font-bold">
+                  {preferences.dailyProteinGoal}g / day
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {/* Show/Hide Toggle */}
+              <div className="p-3.5 rounded-xl border border-zinc-800/80 bg-zinc-900/60 flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-xs text-zinc-200 block">
+                    Show Protein Tracker
+                  </span>
+                  <p className="text-[11px] text-zinc-400">
+                    Display protein progress widget on the home dashboard and navigation header.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  id="pref-toggle-protein-tracker-btn"
+                  onClick={() => updatePreference('showProteinTracker', !preferences.showProteinTracker)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    preferences.showProteinTracker ? 'bg-emerald-500' : 'bg-zinc-700'
+                  }`}
+                  role="switch"
+                  aria-checked={preferences.showProteinTracker}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      preferences.showProteinTracker ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Daily Target Setting */}
+              <div className="p-3.5 rounded-xl border border-zinc-800/80 bg-zinc-900/60 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="font-bold text-xs text-zinc-200 block">
+                      Daily Protein Target
+                    </span>
+                    <p className="text-[11px] text-zinc-400">
+                      Visual progress bar activates once set. Set to 0 to keep it optional/idle.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="500"
+                      value={preferences.dailyProteinGoal || ''}
+                      placeholder="e.g. 160"
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        updatePreference('dailyProteinGoal', isNaN(val) ? 0 : Math.max(0, val));
+                      }}
+                      className="w-24 px-3 py-1.5 rounded-xl bg-zinc-950 border border-zinc-700 text-emerald-400 font-mono-numbers font-bold text-xs text-center focus:border-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-xs text-zinc-500 font-semibold">grams</span>
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mr-1">
+                    Presets:
+                  </span>
+                  {[120, 140, 160, 180, 200, 220].map((presetGrams) => (
+                    <button
+                      key={presetGrams}
+                      type="button"
+                      onClick={() => updatePreference('dailyProteinGoal', presetGrams)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono-numbers transition-colors ${
+                        preferences.dailyProteinGoal === presetGrams
+                          ? 'bg-emerald-500 text-zinc-950 font-bold'
+                          : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                      }`}
+                    >
+                      {presetGrams}g
+                    </button>
+                  ))}
+                  {preferences.dailyProteinGoal > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => updatePreference('dailyProteinGoal', 0)}
+                      className="px-2 py-1 text-xs text-zinc-500 hover:text-rose-400 ml-auto"
+                    >
+                      Clear Target
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

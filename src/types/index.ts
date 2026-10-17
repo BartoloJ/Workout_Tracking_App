@@ -86,6 +86,22 @@ export interface ExportDataPayload {
   exercise_logs: ExerciseLog[];
   cardio_logs: CardioLog[];
   custom_exercises?: CustomExercise[];
+  protein_logs?: ProteinMealLog[];
+}
+
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'shake' | 'other';
+
+export interface ProteinMealLog {
+  id?: number;
+  sync_id?: string;
+  date: string; // "YYYY-MM-DD"
+  meal_name: string; // e.g. "Breakfast Eggs & Toast", "Post-Workout Whey Shake"
+  protein_grams: number; // e.g. 35
+  meal_type?: MealType;
+  notes?: string;
+  calories?: number;
+  time?: string; // "12:30 PM"
+  created_at?: number; // timestamp
 }
 
 export interface CustomExercise {
@@ -198,6 +214,8 @@ export interface UserPreferences {
   enableGpsTracking: boolean; // if false, completely disables GPS mode & hides all GPS tracking buttons/HUD for troubleshooting
   autoSaveWorkoutDraft: boolean; // continuously persists in-progress workouts to survive phone locking / app switching
   keepScreenAwakeDuringWorkout: boolean; // uses Screen Wake Lock to prevent phone screen from locking during workout sessions
+  showProteinTracker: boolean; // if false, completely hides protein tracker card and navigation indicators
+  dailyProteinGoal: number; // daily protein goal in grams (e.g. 160). 0 or unset means no goal configured yet
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -216,6 +234,8 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   enableGpsTracking: true,
   autoSaveWorkoutDraft: true,
   keepScreenAwakeDuringWorkout: true,
+  showProteinTracker: true,
+  dailyProteinGoal: 0,
 };
 
 export type PresetTheme = 'full' | 'ultra_minimal' | 'strength_only' | 'cardio_only';

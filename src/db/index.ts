@@ -9,7 +9,8 @@ import {
   ExportDataPayload,
   PREDEFINED_EXERCISES,
   ExerciseSet,
-  ExerciseCategory
+  ExerciseCategory,
+  ProteinMealLog
 } from '../types';
 
 export class WorkoutTrackerDatabase extends Dexie {
@@ -17,6 +18,7 @@ export class WorkoutTrackerDatabase extends Dexie {
   exercise_logs!: Table<ExerciseLog, number>;
   cardio_logs!: Table<CardioLog, number>;
   custom_exercises!: Table<CustomExercise, number>;
+  protein_logs!: Table<ProteinMealLog, number>;
 
   constructor() {
     super('WorkoutTrackerDB');
@@ -30,6 +32,9 @@ export class WorkoutTrackerDatabase extends Dexie {
     });
     this.version(3).stores({
       workouts: '++id, sync_id, date, type, intensity_score, created_at'
+    });
+    this.version(4).stores({
+      protein_logs: '++id, sync_id, date, created_at'
     });
   }
 }
@@ -141,6 +146,86 @@ export async function deleteCustomExercise(nameOrId: string | number): Promise<v
     }
   } catch (err) {
     console.error('Error deleting custom exercise:', err);
+  }
+}
+
+/**
+ * Fetch all protein meal logs for a specific date (YYYY-MM-DD)
+ */
+export async function getProteinLogsForDate(dateStr: string): Promise<ProteinMealLog[]> {
+  try {
+    return await db.protein_logs.where('date').equals(dateStr).sortBy('created_at');
+  } catch (err) {
+    console.error('Error fetching protein logs for date:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch all protein meal logs across all dates
+ */
+export async function getAllProteinLogs(): Promise<ProteinMealLog[]> {
+  try {
+    return await db.protein_logs.toArray();
+  } catch (err) {
+    console.error('Error fetching all protein logs:', err);
+    return [];
+  }
+}
+
+/**
+ * Save or update a protein meal log in IndexedDB
+ */
+export async function saveProteinMealLog(log: Omit<ProteinMealLog, 'id'> & { id?: number }): Promise<number> {
+  const syncId = log.sync_id || generateSyncId();
+  const timestamp = log.created_at || Date.now();
+
+  if (log.id) {
+    await db.protein_logs.update(log.id, {
+      ...log,
+      sync_id: syncId,
+      created_at: timestamp
+    });
+    return log.id;
+  } else {
+    return await db.protein_logs.add({
+      ...log,
+      sync_id: syncId,
+      created_at: timestamp
+    });
+  }
+}
+
+/**
+ * Delete a protein meal log by ID
+ */
+export async function deleteProteinMealLog(id: number): Promise<void> {
+  try {
+    await db.protein_logs.delete(id);
+  } catch (err) {
+    console.error('Error deleting protein meal log:', err);
+  }
+}
+
+/**
+ * Calculate total protein and meal details for a given date
+ */
+export async function getDailyProteinSummary(dateStr: string): Promise<{
+  totalGrams: number;
+  mealCount: number;
+  logs: ProteinMealLog[];
+}> {
+  try {
+    const logs = await getProteinLogsForDate(dateStr);
+    const totalGrams = logs.reduce((sum, item) => sum + (Number(item.protein_grams) || 0), 0);
+    return {
+      totalGrams,
+      mealCount: logs.length,
+      logs
+    };
+  } catch (err) {
+    console.error('Error getting daily protein summary:', err);
+    return { totalGrams: 0, mealCount: 0, logs: [] };
   }
 }
 
@@ -530,6 +615,7 @@ export async function exportDatabaseJSON(): Promise<ExportDataPayload> {
   const exercise_logs = await db.exercise_logs.toArray();
   const cardio_logs = await db.cardio_logs.toArray();
   const custom_exercises = await db.custom_exercises.toArray();
+  const protein_logs = await db.protein_logs.toArray();
 
   return {
     version: 1,
@@ -538,7 +624,8 @@ export async function exportDatabaseJSON(): Promise<ExportDataPayload> {
     workouts,
     exercise_logs,
     cardio_logs,
-    custom_exercises
+    custom_exercises,
+    protein_logs
   };
 }
 
@@ -553,12 +640,13 @@ export async function importDatabaseJSON(
     throw new Error('Invalid JSON backup file format.');
   }
 
-  return await db.transaction('rw', db.workouts, db.exercise_logs, db.cardio_logs, db.custom_exercises, async () => {
+  return await db.transaction('rw', db.workouts, db.exercise_logs, db.cardio_logs, db.custom_exercises, db.protein_logs, async () => {
     if (replaceAll) {
       await db.workouts.clear();
       await db.exercise_logs.clear();
       await db.cardio_logs.clear();
       await db.custom_exercises.clear();
+      await db.protein_logs.clear();
 
       // Ensure all imported workouts have sync_id
       const workoutsToInsert = payload.workouts.map(w => ({
@@ -572,6 +660,14 @@ export async function importDatabaseJSON(
       if (payload.exercise_logs?.length > 0) await db.exercise_logs.bulkAdd(payload.exercise_logs);
       if (payload.cardio_logs?.length > 0) await db.cardio_logs.bulkAdd(payload.cardio_logs);
       if (payload.custom_exercises?.length) await db.custom_exercises.bulkAdd(payload.custom_exercises);
+      if (payload.protein_logs && payload.protein_logs.length > 0) {
+        const pLogsToInsert = payload.protein_logs.map(p => ({
+          ...p,
+          sync_id: p.sync_id || generateSyncId(),
+          created_at: p.created_at || Date.now()
+        }));
+        await db.protein_logs.bulkAdd(pLogsToInsert);
+      }
 
       return {
         success: true,
@@ -774,6 +870,30 @@ export async function importDatabaseJSON(
         }
 
         newInsertedCount++;
+      }
+    }
+
+    // 4. Merge protein meal logs safely
+    if (payload.protein_logs && payload.protein_logs.length > 0) {
+      for (const pl of payload.protein_logs) {
+        let exists = false;
+        if (pl.sync_id) {
+          const match = await db.protein_logs.where('sync_id').equals(pl.sync_id).first();
+          if (match) exists = true;
+        }
+        if (!exists) {
+          await db.protein_logs.add({
+            sync_id: pl.sync_id || generateSyncId(),
+            date: pl.date,
+            meal_name: pl.meal_name,
+            protein_grams: pl.protein_grams,
+            meal_type: pl.meal_type || 'other',
+            notes: pl.notes || '',
+            calories: pl.calories,
+            time: pl.time,
+            created_at: pl.created_at || Date.now()
+          });
+        }
       }
     }
 

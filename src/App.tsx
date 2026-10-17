@@ -26,6 +26,10 @@ import { RestTimerModal } from './components/RestTimerModal';
 import { FloatingRestTimer } from './components/FloatingRestTimer';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { PreferencesModal } from './components/PreferencesModal';
+import { ProteinTrackerCard } from './components/ProteinTrackerCard';
+import { ProteinLogModal } from './components/ProteinLogModal';
+import { getDailyProteinSummary } from './db';
+import { ProteinMealLog } from './types';
 import { useRestTimer } from './contexts/RestTimerContext';
 import { Plus, Dumbbell, Sparkles, Flame, Trophy, Timer, ArrowUp, RotateCcw } from 'lucide-react';
 
@@ -69,6 +73,39 @@ export default function App() {
   const [isPRModalOpen, setIsPRModalOpen] = useState<boolean>(false);
   const [isPWAModalOpen, setIsPWAModalOpen] = useState<boolean>(false);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState<boolean>(false);
+
+  // Protein Tracking State
+  const todayDateStr = new Date().toISOString().split('T')[0];
+  const [todayProteinGrams, setTodayProteinGrams] = useState<number>(0);
+  const [isProteinModalOpen, setIsProteinModalOpen] = useState<boolean>(false);
+  const [proteinModalDate, setProteinModalDate] = useState<string>('');
+  const [editingProteinMeal, setEditingProteinMeal] = useState<ProteinMealLog | null>(null);
+  const [proteinRefreshTrigger, setProteinRefreshTrigger] = useState<number>(0);
+
+  // Refresh today's protein intake
+  const refreshProtein = useCallback(async () => {
+    try {
+      const summary = await getDailyProteinSummary(todayDateStr);
+      setTodayProteinGrams(summary.totalGrams);
+    } catch (err) {
+      console.error('Error refreshing today protein:', err);
+    }
+  }, [todayDateStr]);
+
+  useEffect(() => {
+    refreshProtein();
+  }, [refreshProtein, proteinRefreshTrigger]);
+
+  const handleOpenProteinModal = (dateStr?: string, mealToEdit?: ProteinMealLog | null) => {
+    setProteinModalDate(dateStr || todayDateStr);
+    setEditingProteinMeal(mealToEdit || null);
+    setIsProteinModalOpen(true);
+  };
+
+  const handleProteinMealSaved = () => {
+    setProteinRefreshTrigger(prev => prev + 1);
+    refreshProtein();
+  };
 
   // Listen for draft changes across tabs and background actions
   useEffect(() => {
@@ -245,6 +282,8 @@ export default function App() {
           refreshData();
         }}
         totalWorkouts={stats.totalAllTime}
+        todayProtein={todayProteinGrams}
+        onOpenProteinModal={() => handleOpenProteinModal()}
       />
 
       {/* Main Content Area */}
@@ -308,6 +347,12 @@ export default function App() {
         <StatsBar
           stats={stats}
           currentMonthName={currentMonthName}
+        />
+
+        {/* Minimalist Protein Tracking Feature (Optional, with visual progress & quick meal logs) */}
+        <ProteinTrackerCard
+          key={`protein-card-${proteinRefreshTrigger}`}
+          onOpenLogModal={handleOpenProteinModal}
         />
 
         {/* Hero GitHub-style Green Activity Calendar */}
@@ -423,6 +468,7 @@ export default function App() {
           handleOpenLogModal(dStr);
         }}
         onDeleted={refreshData}
+        onOpenProteinModal={(dStr) => handleOpenProteinModal(dStr)}
       />
 
       {/* 3. Data Backup, JSON Export & Import Modal */}
@@ -454,6 +500,15 @@ export default function App() {
       <PreferencesModal
         isOpen={isPreferencesModalOpen}
         onClose={() => setIsPreferencesModalOpen(false)}
+      />
+
+      {/* 8. Minimalist Protein Meal Logger Modal */}
+      <ProteinLogModal
+        isOpen={isProteinModalOpen}
+        onClose={() => setIsProteinModalOpen(false)}
+        onMealSaved={handleProteinMealSaved}
+        initialDate={proteinModalDate}
+        editingMeal={editingProteinMeal}
       />
     </div>
   );

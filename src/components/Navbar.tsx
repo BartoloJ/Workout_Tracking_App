@@ -11,10 +11,12 @@ import {
   WifiOff,
   Sparkles,
   Cloud,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Utensils
 } from 'lucide-react';
 import { useGoogleAuth } from '../contexts/GoogleAuthContext';
 import { useRestTimer } from '../contexts/RestTimerContext';
+import { usePreferences } from '../contexts/PreferencesContext';
 
 interface NavbarProps {
   onOpenNewWorkout: () => void;
@@ -25,6 +27,8 @@ interface NavbarProps {
   onOpenPreferences: () => void;
   onSeedSampleData: () => void;
   totalWorkouts: number;
+  todayProtein?: number;
+  onOpenProteinModal: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -35,8 +39,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenPWAModal,
   onOpenPreferences,
   onSeedSampleData,
-  totalWorkouts
+  totalWorkouts,
+  todayProtein = 0,
+  onOpenProteinModal
 }) => {
+  const { preferences } = usePreferences();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const { isAuthenticated } = useGoogleAuth();
   const { isActive: isTimerActive, remainingSeconds, formattedTime } = useRestTimer();
@@ -146,6 +153,31 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Trophy className="w-4 h-4" />
           </button>
+
+          {/* Daily Protein Tracker Pill (Optional & Fast throughout the day) */}
+          {preferences.showProteinTracker && preferences.dailyProteinGoal > 0 && (
+            <button
+              id="nav-protein-tracker-btn"
+              onClick={onOpenProteinModal}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-colors touch-press text-xs font-semibold cursor-pointer ${
+                todayProtein >= preferences.dailyProteinGoal
+                  ? 'bg-emerald-950/80 border-emerald-500/80 text-emerald-400 shadow-sm shadow-emerald-950'
+                  : 'bg-zinc-900/60 hover:bg-zinc-900 border-zinc-800 hover:border-emerald-500/50 text-zinc-300'
+              }`}
+              title={`Daily Protein: ${todayProtein}g / ${preferences.dailyProteinGoal}g (${Math.round(
+                (todayProtein / preferences.dailyProteinGoal) * 100
+              )}%)`}
+            >
+              <Utensils className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="font-mono-numbers font-bold text-xs flex items-center gap-0.5">
+                <span>{todayProtein}</span>
+                <span className="text-zinc-500 font-normal hidden sm:inline">/{preferences.dailyProteinGoal}g</span>
+                {todayProtein >= preferences.dailyProteinGoal && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 ml-0.5" />
+                )}
+              </span>
+            </button>
+          )}
 
           {/* Backup / Export / Import / Google Drive */}
           <button

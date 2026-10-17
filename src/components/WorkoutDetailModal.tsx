@@ -13,10 +13,11 @@ import {
   Zap,
   CheckCircle2,
   Navigation,
-  Download
+  Download,
+  Utensils
 } from 'lucide-react';
-import { WorkoutWithDetails } from '../types';
-import { deleteWorkoutWithDetails } from '../db';
+import { WorkoutWithDetails, ProteinMealLog } from '../types';
+import { deleteWorkoutWithDetails, getDailyProteinSummary } from '../db';
 import { usePreferences } from '../contexts/PreferencesContext';
 import { RouteMap } from './RouteMap';
 import { generateGpxString, downloadGpxFile } from '../utils/gpsMath';
@@ -29,6 +30,7 @@ interface WorkoutDetailModalProps {
   onEditWorkout: (workout: WorkoutWithDetails) => void;
   onAddAnother: (dateStr: string) => void;
   onDeleted: () => void;
+  onOpenProteinModal?: (dateStr: string) => void;
 }
 
 export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
@@ -38,10 +40,23 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
   workouts,
   onEditWorkout,
   onAddAnother,
-  onDeleted
+  onDeleted,
+  onOpenProteinModal
 }) => {
   const { preferences } = usePreferences();
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [proteinSummary, setProteinSummary] = useState<{ totalGrams: number; logs: ProteinMealLog[] }>({
+    totalGrams: 0,
+    logs: []
+  });
+
+  React.useEffect(() => {
+    if (isOpen && dateStr) {
+      getDailyProteinSummary(dateStr).then(res => {
+        setProteinSummary({ totalGrams: res.totalGrams, logs: res.logs });
+      }).catch(err => console.error(err));
+    }
+  }, [isOpen, dateStr]);
 
   if (!isOpen) return null;
 
@@ -113,6 +128,47 @@ export const WorkoutDetailModal: React.FC<WorkoutDetailModalProps> = ({
 
         {/* Modal Content / Sessions List */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Daily Protein Fueling Status for this day */}
+          {preferences.showProteinTracker && (proteinSummary.logs.length > 0 || preferences.dailyProteinGoal > 0) && (
+            <div className="bg-zinc-800/60 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-emerald-400 shrink-0">
+                  <Utensils className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-zinc-200">Daily Protein Fueling</span>
+                    {preferences.dailyProteinGoal > 0 && proteinSummary.totalGrams >= preferences.dailyProteinGoal && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">
+                        Target Met
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-zinc-400 font-mono-numbers mt-0.5">
+                    <strong className="text-emerald-400 font-bold">{proteinSummary.totalGrams}g</strong>
+                    {preferences.dailyProteinGoal > 0
+                      ? ` / ${preferences.dailyProteinGoal}g (${Math.round(
+                          (proteinSummary.totalGrams / preferences.dailyProteinGoal) * 100
+                        )}%)`
+                      : ''}{' '}
+                    • {proteinSummary.logs.length} {proteinSummary.logs.length === 1 ? 'meal' : 'meals'} logged
+                  </p>
+                </div>
+              </div>
+
+              {onOpenProteinModal && (
+                <button
+                  type="button"
+                  onClick={() => onOpenProteinModal(dateStr)}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-400 hover:text-zinc-950 bg-zinc-900 hover:bg-emerald-500 border border-zinc-800 hover:border-emerald-400 rounded-xl transition-colors shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Log Meal</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {workouts.map((wDetails, index) => {
             const { workout, exercises, cardio } = wDetails;
             const intensityBadge = getIntensityLabel(workout.intensity_score);
